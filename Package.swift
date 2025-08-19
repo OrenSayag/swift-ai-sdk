@@ -5,11 +5,15 @@ import PackageDescription
 
 let package = Package(
     name: "swift-ai-sdk",
+    platforms: [
+        .macOS(.v10_15),
+    ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "swift-ai-sdk",
-            targets: ["swift-ai-sdk"]),
+            targets: ["swift-ai-sdk"]
+        ),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

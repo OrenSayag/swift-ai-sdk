@@ -50,9 +50,35 @@ public enum UIMessageRole: String {
     case system, user, assistant
 }
 
-public protocol MessagePart {}
+public protocol MessagePart {
+    func asDictionary() -> [String: Any]
+}
+
+public enum MessagePartState: String {
+    case streaming, done
+}
+
 public struct TextPart: MessagePart {
-    public let text: String
+    public var text: String
+    public var state: MessagePartState?
+    public var providerMetadata: Any?
+    public func asDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "text": text,
+        ]
+        if let state = state {
+            dict["state"] = state.rawValue
+        }
+        if let metadata = providerMetadata {
+            dict["providerMetadata"] = metadata
+        }
+        return dict
+    }
+}
+
+struct ActiveResponse {
+    var state: StreamingUIMessageState
+    var task: URLSessionDataTask? // For abort/cancel
 }
 
 public struct File {
@@ -65,6 +91,14 @@ public struct FilePart: MessagePart {
     public let filename: String
     public let url: URL
     public let mediaType: String
+    public func asDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "filename": filename,
+            "url": url.absoluteString,
+            "mediaType": mediaType,
+        ]
+        return dict
+    }
 }
 
 public class UIMessage {
@@ -77,6 +111,18 @@ public class UIMessage {
         self.role = role
         self.parts = parts
         self.metadata = metadata
+    }
+
+    public func asDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "id": id,
+            "role": role.rawValue,
+            "parts": parts.map { $0.asDictionary() },
+        ]
+        if let metadata = metadata {
+            dict["metadata"] = metadata
+        }
+        return dict
     }
 }
 
@@ -119,6 +165,8 @@ public struct ChatInit {
     public var onFinish: ChatOnFinishCallback?
     public var onToolCall: ChatOnToolCallCallback?
     public var onData: ChatOnDataCallback?
+    public var sTextPartendAutomaticallyWhen: SendAutomaticallyWhen?
+    public var transport: ChatTransport
     public var sendAutomaticallyWhen: SendAutomaticallyWhen?
 
     public init(
@@ -129,7 +177,8 @@ public struct ChatInit {
         onFinish: ChatOnFinishCallback? = nil,
         onToolCall: ChatOnToolCallCallback? = nil,
         onData: ChatOnDataCallback? = nil,
-        sendAutomaticallyWhen: SendAutomaticallyWhen? = nil
+        sendAutomaticallyWhen: SendAutomaticallyWhen? = nil,
+        transport: ChatTransport = DefaultChatTransport()
     ) {
         self.id = id
         self.state = state
@@ -139,6 +188,7 @@ public struct ChatInit {
         self.onToolCall = onToolCall
         self.onData = onData
         self.sendAutomaticallyWhen = sendAutomaticallyWhen
+        self.transport = transport
     }
 }
 
@@ -151,6 +201,7 @@ public class Chat {
     public let onToolCall: ChatOnToolCallCallback?
     public let onData: ChatOnDataCallback?
     public let sendAutomaticallyWhen: SendAutomaticallyWhen?
+    public let transport: ChatTransport
 
     public init(_ initStruct: ChatInit) {
         generateId = initStruct.generateId ?? { UUID().uuidString }
@@ -161,6 +212,7 @@ public class Chat {
         onToolCall = initStruct.onToolCall
         onData = initStruct.onData
         sendAutomaticallyWhen = initStruct.sendAutomaticallyWhen
+        transport = initStruct.transport
     }
 
     public enum SendMessageInput {
@@ -291,11 +343,76 @@ public class Chat {
         }
     }
 
-    // Placeholders for networking and utilities
+    var activeResponse: ActiveResponse?
 
-    public func makeRequest(input _: MakeRequestInput) async throws {
-        print("not implemented: makeRequest")
-        // fatalError("makeRequest not implemented")
+    private static let messageJobQueue = DispatchQueue(label: "chat.message.job.queue", qos: .userInitiated)
+
+    func runUpdateMessageJob(
+        job: @escaping @Sendable (_ state: StreamingUIMessageState, _ write: @escaping () -> Void) async -> Void,
+        state: StreamingUIMessageState,
+        write: @escaping @Sendable () -> Void
+    ) async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue(label: "chat.message.job.queue").async {
+                Task {
+                    await job(state, write)
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    public func makeRequest(input: MakeRequestInput) async throws {
+        setStatus(status: .submitted, error: nil)
+
+        let streamingState = createStreamingUIMessageState(
+            lastMessage: lastMessage,
+            messageId: generateId()
+        )
+
+        let dummyTask: URLSessionDataTask? = nil
+        activeResponse = ActiveResponse(state: streamingState, task: dummyTask)
+
+        var stream: AsyncStream<UIMessageChunk>
+
+        if input.trigger == .resumeStream {
+            fatalError("Resume stream not implemented")
+        } else {
+            stream = try await transport.sendMessages(
+                chatId: id,
+                messages: messages,
+                abortSignal: nil,
+                metadata: input.options?.metadata,
+                headers: input.options?.headers,
+                body: input.options?.body,
+                trigger: input.trigger,
+                messageId: input.messageId
+            )
+        }
+
+        var thrownError: Error?
+        let processStream = processUIMessageStream(
+            options: ProcessUIMessageStreamOptions(
+                stream: stream,
+                runUpdateMessageJob: { job in
+                    job(&self.activeResponse!.state) {}
+                },
+                onError: { error in
+                    thrownError = error
+                    self.onError?(error)
+                },
+                onToolCall: { toolCall in
+                    self.onToolCall?(toolCall)
+                },
+                onData: { data in
+                    self.onData?(data)
+                }
+            )
+        )
+
+        if let thrownError {
+            throw thrownError
+        }
     }
 
     public var lastMessage: UIMessage? {
