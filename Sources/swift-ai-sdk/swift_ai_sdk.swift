@@ -1,12 +1,44 @@
 // The Swift Programming Language
 // https://docs.swift.org/swift-book
 
+import Foundation
+
+public enum ChatError: Error {
+    case messageNotFound(id: String)
+    case notUserMessage(id: String)
+}
+
+public enum UIMessageRole: String {
+    case system, user, assistant
+}
+
+public protocol MessagePart {}
+public struct TextPart: MessagePart {
+    public let text: String
+}
+
+public struct File {
+    public let filename: String
+    public let url: URL
+    public let mediaType: String
+}
+
+public struct FilePart: MessagePart {
+    public let filename: String
+    public let url: URL
+    public let mediaType: String
+}
+
 public class UIMessage {
-    var id: String
-    var role: String
-    public init(id: String, role: String) {
+    public let id: String
+    public let role: UIMessageRole
+    public var parts: [MessagePart]
+    public var metadata: [String: Any]?
+    public init(id: String, role: UIMessageRole, parts: [MessagePart], metadata: [String: Any]? = nil) {
         self.id = id
         self.role = role
+        self.parts = parts
+        self.metadata = metadata
     }
 }
 
@@ -35,19 +67,188 @@ public class ChatState {
     }
 }
 
+public typealias ChatOnErrorCallback = (Error) -> Void
+public typealias ChatOnFinishCallback = (UIMessage) -> Void
+public typealias ChatOnToolCallCallback = (Any) -> Void
+public typealias ChatOnDataCallback = (Any) -> Void
+public typealias SendAutomaticallyWhen = ([UIMessage]) -> Bool
+
+public struct ChatInit {
+    public var id: String?
+    public var state: ChatState
+    public var generateId: (() -> String)?
+    public var onError: ChatOnErrorCallback?
+    public var onFinish: ChatOnFinishCallback?
+    public var onToolCall: ChatOnToolCallCallback?
+    public var onData: ChatOnDataCallback?
+    public var sendAutomaticallyWhen: SendAutomaticallyWhen?
+
+    public init(
+        id: String? = nil,
+        state: ChatState,
+        generateId: (() -> String)? = nil,
+        onError: ChatOnErrorCallback? = nil,
+        onFinish: ChatOnFinishCallback? = nil,
+        onToolCall: ChatOnToolCallCallback? = nil,
+        onData: ChatOnDataCallback? = nil,
+        sendAutomaticallyWhen: SendAutomaticallyWhen? = nil
+    ) {
+        self.id = id
+        self.state = state
+        self.generateId = generateId
+        self.onError = onError
+        self.onFinish = onFinish
+        self.onToolCall = onToolCall
+        self.onData = onData
+        self.sendAutomaticallyWhen = sendAutomaticallyWhen
+    }
+}
+
 public class Chat {
     public let id: String
     public var state: ChatState
+    public let generateId: () -> String
+    public let onError: ChatOnErrorCallback?
+    public let onFinish: ChatOnFinishCallback?
+    public let onToolCall: ChatOnToolCallCallback?
+    public let onData: ChatOnDataCallback?
+    public let sendAutomaticallyWhen: SendAutomaticallyWhen?
 
-    public init(id: String, state: ChatState) {
-        self.id = id
-        self.state = state
+    public init(_ initStruct: ChatInit) {
+        generateId = initStruct.generateId ?? { UUID().uuidString }
+        id = initStruct.id ?? generateId()
+        state = initStruct.state
+        onError = initStruct.onError
+        onFinish = initStruct.onFinish
+        onToolCall = initStruct.onToolCall
+        onData = initStruct.onData
+        sendAutomaticallyWhen = initStruct.sendAutomaticallyWhen
     }
 
-    public func sendMessage(_ message: UIMessage?) async {
-        guard let message = message else {
+    public enum SendMessageInput {
+        case message(UIMessage, messageId: String?)
+        case text(String, files: [File]?, metadata: [String: Any]?, messageId: String?)
+        case files([File], metadata: [String: Any]?, messageId: String?)
+        case none
+    }
+
+    // MARK: - Status/Error Management
+
+    public var status: ChatStatus {
+        return state.status
+    }
+
+    public var error: Error? {
+        return state.error
+    }
+
+    public func setStatus(status: ChatStatus, error: Error? = nil) {
+        guard state.status != status else { return }
+        state.status = status
+        state.error = error
+    }
+
+    public func clearError() {
+        if state.status == .error {
+            state.error = nil
+            setStatus(status: .ready)
+        }
+    }
+
+    // MARK: - Messaging
+
+    private func convertFilesToParts(_ files: [File]?) -> [FilePart] {
+        guard let files = files else { return [] }
+        return files.map { FilePart(filename: $0.filename, url: $0.url, mediaType: $0.mediaType) }
+    }
+
+    public func sendMessage(
+        input: SendMessageInput
+    ) async throws {
+        switch input {
+        case .none:
+            try await makeRequest(trigger: "submit-message", messageId: lastMessage?.id)
+            return
+
+        case let .message(msg, messageId):
+            if let messageId = messageId {
+                guard let idx = messages.firstIndex(where: { $0.id == messageId }) else {
+                    throw ChatError.messageNotFound(id: messageId)
+                }
+                guard messages[idx].role == .user else {
+                    throw ChatError.notUserMessage(id: messageId)
+                }
+                messages = Array(messages.prefix(upTo: idx + 1))
+                state.replaceMessage(at: idx, with: msg)
+            } else {
+                state.pushMessage(msg)
+            }
+            try await makeRequest(trigger: "submit-message", messageId: messageId)
+            return
+
+        case let .text(text, files, metadata, messageId):
+            let fileParts = convertFilesToParts(files)
+            let textPart = TextPart(text: text)
+            let combinedParts: [MessagePart] = fileParts + [textPart]
+            let newMsg = UIMessage(
+                id: messageId ?? generateId(),
+                role: .user,
+                parts: combinedParts,
+                metadata: metadata
+            )
+            if let messageId = messageId {
+                guard let idx = messages.firstIndex(where: { $0.id == messageId }) else {
+                    throw ChatError.messageNotFound(id: messageId)
+                }
+                guard messages[idx].role == .user else {
+                    throw ChatError.notUserMessage(id: messageId)
+                }
+                messages = Array(messages.prefix(upTo: idx + 1))
+                state.replaceMessage(at: idx, with: newMsg)
+            } else {
+                state.pushMessage(newMsg)
+            }
+            try await makeRequest(trigger: "submit-message", messageId: messageId)
+            return
+
+        case let .files(files, metadata, messageId):
+            let fileParts = convertFilesToParts(files)
+            let newMsg = UIMessage(
+                id: messageId ?? generateId(),
+                role: .user,
+                parts: fileParts,
+                metadata: metadata
+            )
+            if let messageId = messageId {
+                guard let idx = messages.firstIndex(where: { $0.id == messageId }) else {
+                    throw ChatError.messageNotFound(id: messageId)
+                }
+                guard messages[idx].role == .user else {
+                    throw ChatError.notUserMessage(id: messageId)
+                }
+                messages = Array(messages.prefix(upTo: idx + 1))
+                state.replaceMessage(at: idx, with: newMsg)
+            } else {
+                state.pushMessage(newMsg)
+            }
+            try await makeRequest(trigger: "submit-message", messageId: messageId)
             return
         }
-        state.pushMessage(message)
+    }
+
+    // Placeholders for networking and utilities
+
+    public func makeRequest(trigger _: String, messageId _: String? = nil) async throws {
+        print("not implemented: makeRequest")
+        // fatalError("makeRequest not implemented")
+    }
+
+    public var lastMessage: UIMessage? {
+        return state.messages.last
+    }
+
+    public var messages: [UIMessage] {
+        get { state.messages }
+        set { state.messages = newValue }
     }
 }
