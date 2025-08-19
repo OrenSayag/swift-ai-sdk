@@ -8,6 +8,44 @@ public enum ChatError: Error {
     case notUserMessage(id: String)
 }
 
+public enum ChatRequestTrigger: String {
+    case submitMessage = "submit-message"
+    case resumeStream = "resume-stream"
+    case regenerateMessage = "regenerate-message"
+}
+
+public struct ChatRequestOptions {
+    public let headers: [String: String]?
+    public let body: [String: Any]?
+    public let metadata: [String: Any]?
+
+    public init(
+        headers: [String: String]? = nil,
+        body: [String: Any]? = nil,
+        metadata: [String: Any]? = nil
+    ) {
+        self.headers = headers
+        self.body = body
+        self.metadata = metadata
+    }
+}
+
+public struct MakeRequestInput {
+    public let trigger: ChatRequestTrigger
+    public let messageId: String?
+    public let options: ChatRequestOptions?
+
+    public init(
+        trigger: ChatRequestTrigger,
+        messageId: String? = nil,
+        options: ChatRequestOptions? = nil
+    ) {
+        self.trigger = trigger
+        self.messageId = messageId
+        self.options = options
+    }
+}
+
 public enum UIMessageRole: String {
     case system, user, assistant
 }
@@ -163,11 +201,16 @@ public class Chat {
     }
 
     public func sendMessage(
-        input: SendMessageInput
+        input: SendMessageInput,
+        options: ChatRequestOptions? = nil
     ) async throws {
         switch input {
         case .none:
-            try await makeRequest(trigger: "submit-message", messageId: lastMessage?.id)
+            try await makeRequest(input: MakeRequestInput(
+                trigger: .submitMessage,
+                messageId: lastMessage?.id,
+                options: options
+            ))
             return
 
         case let .message(msg, messageId):
@@ -183,7 +226,11 @@ public class Chat {
             } else {
                 state.pushMessage(msg)
             }
-            try await makeRequest(trigger: "submit-message", messageId: messageId)
+            try await makeRequest(input: MakeRequestInput(
+                trigger: .submitMessage,
+                messageId: messageId,
+                options: options
+            ))
             return
 
         case let .text(text, files, metadata, messageId):
@@ -208,7 +255,11 @@ public class Chat {
             } else {
                 state.pushMessage(newMsg)
             }
-            try await makeRequest(trigger: "submit-message", messageId: messageId)
+            try await makeRequest(input: MakeRequestInput(
+                trigger: .submitMessage,
+                messageId: messageId,
+                options: options
+            ))
             return
 
         case let .files(files, metadata, messageId):
@@ -231,14 +282,18 @@ public class Chat {
             } else {
                 state.pushMessage(newMsg)
             }
-            try await makeRequest(trigger: "submit-message", messageId: messageId)
+            try await makeRequest(input: MakeRequestInput(
+                trigger: .submitMessage,
+                messageId: messageId,
+                options: options
+            ))
             return
         }
     }
 
     // Placeholders for networking and utilities
 
-    public func makeRequest(trigger _: String, messageId _: String? = nil) async throws {
+    public func makeRequest(input _: MakeRequestInput) async throws {
         print("not implemented: makeRequest")
         // fatalError("makeRequest not implemented")
     }

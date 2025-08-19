@@ -9,6 +9,7 @@ import Testing
     try await chat.sendMessage(input: .message(message, messageId: nil))
     #expect(chat.state.messages.count == 1)
     #expect(chat.state.messages.first?.id == "test-message")
+    dump(chat.state.messages)
 }
 
 @Test func sendTextAndFilesMessage() async throws {
@@ -20,4 +21,5 @@ import Testing
     #expect(chat.state.messages.first?.parts.count == 2)
     #expect(chat.state.messages.first?.parts[0] is FilePart)
     #expect(chat.state.messages.first?.parts[1] is TextPart)
+    dump(chat.state.messages)
 }
