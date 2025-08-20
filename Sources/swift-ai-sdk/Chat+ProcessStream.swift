@@ -20,8 +20,10 @@ public struct StreamingUIMessageState: @unchecked Sendable {
 }
 
 public struct ProcessUIMessageStreamOptions: @unchecked Sendable {
-    var stream:AsyncStream<UIMessageChunk>
-    var runUpdateMessageJob: (_ job: @escaping (_ state: inout StreamingUIMessageState, _ write: () -> Void) -> Void) async -> Void
+    var stream: AsyncStream<UIMessageChunk>
+    var runUpdateMessageJob:
+        (_ job: @escaping (_ state: inout StreamingUIMessageState, _ write: () -> Void) -> Void)
+            async -> Void
     var onError: (Error) -> Void
     var onToolCall: ((Any) -> Void)?
     var onData: ((Any) -> Void)?
@@ -48,7 +50,9 @@ extension Chat {
         }
     }
 
-    func processUIMessageStream(options: ProcessUIMessageStreamOptions) -> AsyncStream<UIMessageChunk> {
+    func processUIMessageStream(options: ProcessUIMessageStreamOptions) -> AsyncStream<
+        UIMessageChunk
+    > {
         guard let stream = options.stream as? AsyncStream<UIMessageChunk> else {
             options.onError(ProcessUIMessageStreamError.invalidStreamType)
             return AsyncStream { $0.finish() }
@@ -67,7 +71,7 @@ extension Chat {
                                 write()
                             case let .textDelta(id, delta, _):
                                 if var textPart = state.activeTextParts[id] as? TextPart,
-                                   let existingText = textPart.text as? String
+                                    let existingText = textPart.text as? String
                                 {
                                     textPart.text = existingText + delta
                                     state.activeTextParts[id] = textPart
@@ -90,7 +94,10 @@ extension Chat {
                                 options.onData?(chunk)
                                 write()
                             case let .error(errorText):
-                                options.onError(NSError(domain: "Chat", code: 0, userInfo: [NSLocalizedDescriptionKey: errorText]))
+                                options.onError(
+                                    NSError(
+                                        domain: "Chat", code: 0,
+                                        userInfo: [NSLocalizedDescriptionKey: errorText]))
                             default:
                                 write()
                             }

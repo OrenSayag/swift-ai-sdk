@@ -1,4 +1,3 @@
-
 import Foundation
 
 public protocol ChatTransport {
@@ -72,77 +71,85 @@ public class DefaultChatTransport: ChatTransport {
     ) async throws -> AsyncStream<UIMessageChunk>? {
         var url = URL(string: apiConfig.apiBaseUrl)!
         guard let realpath = path ?? apiConfig.apiReconnectToStreamPath else {
-            throw NSError(domain: "Chat", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Reconnect path is not set"])
+            throw NSError(
+                domain: "Chat", code: 1001,
+                userInfo: [NSLocalizedDescriptionKey: "Reconnect path is not set"])
         }
         url.appendPathComponent(realpath)
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = "GET"
         headers?.forEach { key, value in request.setValue(value, forHTTPHeaderField: key) }
+        let (response, bytes) = try await streamURL(request: request)
 
-        let (response, responseStream) = try await streamURL(request: request)
-
-        guard let httpResp = response as? HTTPURLResponse else { throw NSError(domain: "Chat", code: 1002) }
+        guard let httpResp = response as? HTTPURLResponse else {
+            throw NSError(domain: "Chat", code: 1002)
+        }
         if httpResp.statusCode == 204 { return nil }
-        guard (200 ..< 300).contains(httpResp.statusCode) else {
-            throw NSError(domain: "Chat", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch the chat response"])
+        guard (200..<300).contains(httpResp.statusCode) else {
+            throw NSError(
+                domain: "Chat", code: httpResp.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch the chat response"])
         }
-        guard let inputStream = responseStream else {
-            throw NSError(domain: "Chat", code: 1003, userInfo: [NSLocalizedDescriptionKey: "The response body is empty"])
-        }
-        return parseEventStream(inputStream: inputStream)
+        return parseEventStream(bytes: bytes)
     }
 
     // MARK: - Helpers
 
-    private func processResponseStream(request: URLRequest) async throws -> AsyncStream<UIMessageChunk> {
-        let (response, inputStream) = try await streamURL(request: request)
-        guard let httpResp = response as? HTTPURLResponse else { throw NSError(domain: "Chat", code: 1002) }
-        guard (200 ..< 300).contains(httpResp.statusCode) else {
-            throw NSError(domain: "Chat", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch the chat response"])
+    private func processResponseStream(request: URLRequest) async throws -> AsyncStream<
+        UIMessageChunk
+    > {
+        let (response, bytes) = try await streamURL(request: request)
+        guard let httpResp = response as? HTTPURLResponse, (200..<300).contains(httpResp.statusCode)
+        else {
+            throw NSError(domain: "Chat", code: 1002)
         }
-        guard let inputStream = inputStream else {
-            throw NSError(domain: "Chat", code: 1003, userInfo: [NSLocalizedDescriptionKey: "The response body is empty"])
-        }
-        return parseEventStream(inputStream: inputStream)
+        return parseEventStream(bytes: bytes)
     }
 
-    private func streamURL(request: URLRequest) async throws -> (URLResponse, InputStream?) {
-        // This assumes you use a custom streaming function or library,
-        // because standard URLSession doesn't support full streaming in simple API.
-        // If using URLSession's bytes(for:...), this needs to be changed to AsyncStream<Data>
-        let (data, response) = try await session.data(for: request) // Demo only; real streaming requires more
-        let stream = InputStream(data: data)
-        return (response, stream)
+    private func streamURL(request: URLRequest) async throws -> (URLResponse, URLSession.AsyncBytes)
+    {
+        let (bytes, response) = try await session.bytes(for: request)
+        return (response, bytes)
     }
 
-    private func parseEventStream(inputStream: InputStream) -> AsyncStream<UIMessageChunk> {
-        // This should parse your actual EventStream or NDJSON to chunks.
-        return AsyncStream { continuation in
-            inputStream.open()
-            defer { inputStream.close() }
-            let bufferSize = 4096
-            var buffer = Data()
-            var temp = [UInt8](repeating: 0, count: bufferSize)
+    private func parseEventStream(bytes: URLSession.AsyncBytes) -> AsyncStream<UIMessageChunk> {
+        AsyncStream { continuation in
+            Task {
+                do {
+                    var buffer = ""
+                    for try await line in bytes.lines {
+                        // Debug: print raw lines to see what we're receiving
+                        print("Raw SSE line: '\(line)'")
 
-            while inputStream.hasBytesAvailable {
-                let read = inputStream.read(&temp, maxLength: bufferSize)
-                if read > 0 {
-                    buffer.append(contentsOf: temp[0 ..< read])
-                    // Assume each JSON object is newline-separated; adjust parsing as needed
-                    while let range = buffer.range(of: Data([0x0A])) { // Newline
-                        let line = buffer[..<range.lowerBound]
-                        buffer = buffer[(range.upperBound)...]
-                        if let json = try? JSONSerialization.jsonObject(with: line),
-                           let chunk = UIMessageChunk.from(json: json)
-                        { // Implement this
-                            continuation.yield(chunk)
+                        // Skip empty lines and lines that don't start with "data: "
+                        guard !line.isEmpty else { continue }
+
+                        if line.hasPrefix("data: ") {
+                            let dataContent = String(line.dropFirst(6))  // Remove "data: " prefix
+
+                            // Handle special SSE messages
+                            if dataContent == "[DONE]" {
+                                continuation.finish()
+                                return
+                            }
+
+                            // Try to parse the data content as JSON
+                            if let data = dataContent.data(using: .utf8),
+                                let json = try? JSONSerialization.jsonObject(with: data),
+                                let chunk = UIMessageChunk.from(json: json)
+                            {
+                                print("Successfully parsed chunk: \(chunk)")
+                                continuation.yield(chunk)
+                            } else {
+                                print("Failed to parse chunk from data: '\(dataContent)'")
+                            }
                         }
                     }
-                } else {
-                    break
+                } catch {
+                    print("Error parsing event stream: \(error)")
                 }
+                continuation.finish()
             }
-            continuation.finish()
         }
     }
 }

@@ -67,7 +67,7 @@ public struct TextPart: MessagePart {
     public var providerMetadata: Any?
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
-            "text": text,
+            "text": text
         ]
         if let state = state {
             dict["state"] = state.rawValue
@@ -81,7 +81,7 @@ public struct TextPart: MessagePart {
 
 struct ActiveResponse {
     var state: StreamingUIMessageState
-    var task: URLSessionDataTask? // For abort/cancel
+    var task: URLSessionDataTask?  // For abort/cancel
 }
 
 public struct File {
@@ -109,7 +109,9 @@ public class UIMessage {
     public let role: UIMessageRole
     public var parts: [MessagePart]
     public var metadata: [String: Any]?
-    public init(id: String, role: UIMessageRole, parts: [MessagePart], metadata: [String: Any]? = nil) {
+    public init(
+        id: String, role: UIMessageRole, parts: [MessagePart], metadata: [String: Any]? = nil
+    ) {
         self.id = id
         self.role = role
         self.parts = parts
@@ -210,9 +212,11 @@ public struct ChatInit {
         guard defaultChatTransportApiConfig != nil || transport != nil else {
             throw ChatError.invalidTransportConfiguration(id: id ?? "unknown")
         }
-        self.transport = transport ?? DefaultChatTransport(
-            apiConfig: defaultChatTransportApiConfig!
-        )
+        self.transport =
+            transport
+            ?? DefaultChatTransport(
+                apiConfig: defaultChatTransportApiConfig!
+            )
     }
 }
 
@@ -282,11 +286,12 @@ public class Chat {
     ) async throws {
         switch input {
         case .none:
-            try await makeRequest(input: MakeRequestInput(
-                trigger: .submitMessage,
-                messageId: lastMessage?.id,
-                options: options
-            ))
+            try await makeRequest(
+                input: MakeRequestInput(
+                    trigger: .submitMessage,
+                    messageId: lastMessage?.id,
+                    options: options
+                ))
             return
 
         case let .message(msg, messageId):
@@ -302,11 +307,12 @@ public class Chat {
             } else {
                 state.pushMessage(msg)
             }
-            try await makeRequest(input: MakeRequestInput(
-                trigger: .submitMessage,
-                messageId: messageId,
-                options: options
-            ))
+            try await makeRequest(
+                input: MakeRequestInput(
+                    trigger: .submitMessage,
+                    messageId: messageId,
+                    options: options
+                ))
             return
 
         case let .text(text, files, metadata, messageId):
@@ -331,11 +337,12 @@ public class Chat {
             } else {
                 state.pushMessage(newMsg)
             }
-            try await makeRequest(input: MakeRequestInput(
-                trigger: .submitMessage,
-                messageId: messageId,
-                options: options
-            ))
+            try await makeRequest(
+                input: MakeRequestInput(
+                    trigger: .submitMessage,
+                    messageId: messageId,
+                    options: options
+                ))
             return
 
         case let .files(files, metadata, messageId):
@@ -358,21 +365,24 @@ public class Chat {
             } else {
                 state.pushMessage(newMsg)
             }
-            try await makeRequest(input: MakeRequestInput(
-                trigger: .submitMessage,
-                messageId: messageId,
-                options: options
-            ))
+            try await makeRequest(
+                input: MakeRequestInput(
+                    trigger: .submitMessage,
+                    messageId: messageId,
+                    options: options
+                ))
             return
         }
     }
 
     var activeResponse: ActiveResponse?
 
-    private static let messageJobQueue = DispatchQueue(label: "chat.message.job.queue", qos: .userInitiated)
+    private static let messageJobQueue = DispatchQueue(
+        label: "chat.message.job.queue", qos: .userInitiated)
 
     func runUpdateMessageJob(
-        job: @escaping @Sendable (_ state: StreamingUIMessageState, _ write: @escaping () -> Void) async -> Void,
+        job: @escaping @Sendable (_ state: StreamingUIMessageState, _ write: @escaping () -> Void)
+            async -> Void,
         state: StreamingUIMessageState,
         write: @escaping @Sendable () -> Void
     ) async {
@@ -408,13 +418,15 @@ public class Chat {
                 activeResponse = nil
             }
             if input.trigger == .resumeStream {
-                guard let reconnectStream = try await transport.reconnectToStream(
-                    chatId: id,
-                    metadata: input.options?.metadata,
-                    headers: input.options?.headers,
-                    body: input.options?.body,
-                    path: nil
-                ) else {
+                guard
+                    let reconnectStream = try await transport.reconnectToStream(
+                        chatId: id,
+                        metadata: input.options?.metadata,
+                        headers: input.options?.headers,
+                        body: input.options?.body,
+                        path: nil
+                    )
+                else {
                     setStatus(status: .ready)
                     // No active stream to resume
                     return
@@ -434,21 +446,11 @@ public class Chat {
             }
 
             var thrownError: Error?
-            processUIMessageStream(
+            let asyncStream = processUIMessageStream(
                 options: ProcessUIMessageStreamOptions(
                     stream: stream,
                     runUpdateMessageJob: { job in
-                        // Simple inline serial job run — might need a dispatch queue for real serialization
-                        job(&self.activeResponse!.state) {
-                            self.setStatus(status: .streaming)
-                            // Replace/append streaming message in state
-                            let streamingMsg = self.activeResponse!.state.message
-                            if let lastId = self.lastMessage?.id, lastId == streamingMsg.id {
-                                self.state.replaceMessage(at: self.state.messages.count - 1, with: streamingMsg)
-                            } else {
-                                self.state.pushMessage(streamingMsg)
-                            }
-                        }
+                        self.setStatus(status: .streaming)
                     },
                     onError: { error in
                         thrownError = error
@@ -463,6 +465,13 @@ public class Chat {
                 )
             )
 
+            // Consume the stream to completion
+            print("Starting to consume stream...")
+            for await _ in asyncStream {
+                // The stream processing is handled in the options callbacks
+            }
+            print("Finished consuming stream")
+
             if let thrownError {
                 throw thrownError
             }
@@ -474,7 +483,9 @@ public class Chat {
             setStatus(status: .ready)
 
         } catch {
-            if (error as NSError).domain == NSCocoaErrorDomain, (error as NSError).code == NSUserCancelledError {
+            if (error as NSError).domain == NSCocoaErrorDomain,
+                (error as NSError).code == NSUserCancelledError
+            {
                 setStatus(status: .ready)
             } else {
                 onError?(error)
@@ -488,11 +499,12 @@ public class Chat {
             }
             autoSendRecursionCount += 1
             defer { autoSendRecursionCount -= 1 }
-            try await makeRequest(input: MakeRequestInput(
-                trigger: .submitMessage,
-                messageId: lastMessage?.id,
-                options: input.options
-            ))
+            try await makeRequest(
+                input: MakeRequestInput(
+                    trigger: .submitMessage,
+                    messageId: lastMessage?.id,
+                    options: input.options
+                ))
         }
     }
 
