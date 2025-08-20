@@ -17,17 +17,18 @@ public protocol ChatTransport {
         chatId: String,
         metadata: [String: Any]?,
         headers: [String: String]?,
-        body: [String: Any]?
+        body: [String: Any]?,
+        path: String?
     ) async throws -> AsyncStream<UIMessageChunk>?
 }
 
 public class DefaultChatTransport: ChatTransport {
-    public let api: String
+    public let apiConfig: ChatTransportApiConfig
     public let session: URLSession
 
-    public init(api: String = "/api/chat", session: URLSession = .shared) {
-        self.api = api
+    public init(apiConfig: ChatTransportApiConfig, session: URLSession = .shared) {
         self.session = session
+        self.apiConfig = apiConfig
     }
 
     public func sendMessages(
@@ -40,7 +41,6 @@ public class DefaultChatTransport: ChatTransport {
         trigger: ChatRequestTrigger,
         messageId: String?
     ) async throws -> AsyncStream<UIMessageChunk> {
-        // Build the POST request body
         var requestBody: [String: Any] = [
             "id": chatId,
             "messages": messages.map { $0.asDictionary() },
@@ -52,7 +52,9 @@ public class DefaultChatTransport: ChatTransport {
             requestBody.merge(body) { existingValue, _ in existingValue }
         }
 
-        var request = URLRequest(url: URL(string: api)!, cachePolicy: .reloadIgnoringLocalCacheData)
+        var url = URL(string: apiConfig.apiBaseUrl)!
+        url.appendPathComponent(apiConfig.apiChatPath)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -62,15 +64,17 @@ public class DefaultChatTransport: ChatTransport {
     }
 
     public func reconnectToStream(
-        chatId: String,
+        chatId _: String,
         metadata _: [String: Any]? = nil,
         headers: [String: String]? = nil,
-        body _: [String: Any]? = nil
+        body _: [String: Any]? = nil,
+        path: String? = nil
     ) async throws -> AsyncStream<UIMessageChunk>? {
-        // Typical reconnect endpoint: /api/chat/{chatId}/stream
-        var url = URL(string: api)!
-        url.appendPathComponent(chatId)
-        url.appendPathComponent("stream")
+        var url = URL(string: apiConfig.apiBaseUrl)!
+        guard let realpath = path ?? apiConfig.apiReconnectToStreamPath else {
+            throw NSError(domain: "Chat", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Reconnect path is not set"])
+        }
+        url.appendPathComponent(realpath)
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = "GET"
         headers?.forEach { key, value in request.setValue(value, forHTTPHeaderField: key) }

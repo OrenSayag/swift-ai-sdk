@@ -19,8 +19,8 @@ public struct StreamingUIMessageState: @unchecked Sendable {
     }
 }
 
-public struct ProcessUIMessageStreamOptions {
-    var stream: Any
+public struct ProcessUIMessageStreamOptions: @unchecked Sendable {
+    var stream:AsyncStream<UIMessageChunk>
     var runUpdateMessageJob: (_ job: @escaping (_ state: inout StreamingUIMessageState, _ write: () -> Void) -> Void) async -> Void
     var onError: (Error) -> Void
     var onToolCall: ((Any) -> Void)?

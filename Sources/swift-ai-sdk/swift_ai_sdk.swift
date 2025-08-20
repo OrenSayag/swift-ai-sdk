@@ -8,6 +8,7 @@ public enum ChatError: Error {
     case notUserMessage(id: String)
     case invalidLastSessionMessage(id: String)
     case tooManyRecursionAttempts(id: String)
+    case invalidTransportConfiguration(id: String)
 }
 
 public enum ChatRequestTrigger: String {
@@ -159,6 +160,21 @@ public typealias ChatOnToolCallCallback = (Any) -> Void
 public typealias ChatOnDataCallback = (Any) -> Void
 public typealias SendAutomaticallyWhen = ([UIMessage]) -> Bool
 
+public struct ChatTransportApiConfig {
+    public let apiBaseUrl: String
+    public let apiChatPath: String
+    public let apiReconnectToStreamPath: String?
+    public init(
+        apiBaseUrl: String,
+        apiChatPath: String,
+        apiReconnectToStreamPath: String? = nil
+    ) {
+        self.apiBaseUrl = apiBaseUrl
+        self.apiChatPath = apiChatPath
+        self.apiReconnectToStreamPath = apiReconnectToStreamPath
+    }
+}
+
 public struct ChatInit {
     public var id: String?
     public var state: ChatState
@@ -180,8 +196,9 @@ public struct ChatInit {
         onToolCall: ChatOnToolCallCallback? = nil,
         onData: ChatOnDataCallback? = nil,
         sendAutomaticallyWhen: SendAutomaticallyWhen? = nil,
-        transport: ChatTransport = DefaultChatTransport()
-    ) {
+        transport: ChatTransport? = nil,
+        defaultChatTransportApiConfig: ChatTransportApiConfig? = nil,
+    ) throws {
         self.id = id
         self.state = state
         self.generateId = generateId
@@ -190,7 +207,12 @@ public struct ChatInit {
         self.onToolCall = onToolCall
         self.onData = onData
         self.sendAutomaticallyWhen = sendAutomaticallyWhen
-        self.transport = transport
+        guard defaultChatTransportApiConfig != nil || transport != nil else {
+            throw ChatError.invalidTransportConfiguration(id: id ?? "unknown")
+        }
+        self.transport = transport ?? DefaultChatTransport(
+            apiConfig: defaultChatTransportApiConfig!
+        )
     }
 }
 
@@ -390,7 +412,8 @@ public class Chat {
                     chatId: id,
                     metadata: input.options?.metadata,
                     headers: input.options?.headers,
-                    body: input.options?.body
+                    body: input.options?.body,
+                    path: nil
                 ) else {
                     setStatus(status: .ready)
                     // No active stream to resume
