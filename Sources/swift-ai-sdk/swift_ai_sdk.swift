@@ -6,6 +6,8 @@ import Foundation
 public enum ChatError: Error {
     case messageNotFound(id: String)
     case notUserMessage(id: String)
+    case invalidLastSessionMessage(id: String)
+    case tooManyRecursionAttempts(id: String)
 }
 
 public enum ChatRequestTrigger: String {
@@ -362,6 +364,10 @@ public class Chat {
         }
     }
 
+    private var autoSendRecursionCount = 0
+    // TODO: make configurable
+    private let autoSendRecursionLimit = 10
+
     public func makeRequest(input: MakeRequestInput) async throws {
         setStatus(status: .submitted, error: nil)
 
@@ -370,48 +376,100 @@ public class Chat {
             messageId: generateId()
         )
 
-        let dummyTask: URLSessionDataTask? = nil
-        activeResponse = ActiveResponse(state: streamingState, task: dummyTask)
+        // TODO: implement task fpr aborting/canceling the request
+        activeResponse = ActiveResponse(state: streamingState, task: nil)
 
         var stream: AsyncStream<UIMessageChunk>
 
-        if input.trigger == .resumeStream {
-            fatalError("Resume stream not implemented")
-        } else {
-            stream = try await transport.sendMessages(
-                chatId: id,
-                messages: messages,
-                abortSignal: nil,
-                metadata: input.options?.metadata,
-                headers: input.options?.headers,
-                body: input.options?.body,
-                trigger: input.trigger,
-                messageId: input.messageId
-            )
-        }
-
-        var thrownError: Error?
-        let processStream = processUIMessageStream(
-            options: ProcessUIMessageStreamOptions(
-                stream: stream,
-                runUpdateMessageJob: { job in
-                    job(&self.activeResponse!.state) {}
-                },
-                onError: { error in
-                    thrownError = error
-                    self.onError?(error)
-                },
-                onToolCall: { toolCall in
-                    self.onToolCall?(toolCall)
-                },
-                onData: { data in
-                    self.onData?(data)
+        do {
+            defer {
+                activeResponse = nil
+            }
+            if input.trigger == .resumeStream {
+                guard let reconnectStream = try await transport.reconnectToStream(
+                    chatId: id,
+                    metadata: input.options?.metadata,
+                    headers: input.options?.headers,
+                    body: input.options?.body
+                ) else {
+                    setStatus(status: .ready)
+                    // No active stream to resume
+                    return
                 }
-            )
-        )
+                stream = reconnectStream
+            } else {
+                stream = try await transport.sendMessages(
+                    chatId: id,
+                    messages: messages,
+                    abortSignal: nil,
+                    metadata: input.options?.metadata,
+                    headers: input.options?.headers,
+                    body: input.options?.body,
+                    trigger: input.trigger,
+                    messageId: input.messageId
+                )
+            }
 
-        if let thrownError {
-            throw thrownError
+            var thrownError: Error?
+            processUIMessageStream(
+                options: ProcessUIMessageStreamOptions(
+                    stream: stream,
+                    runUpdateMessageJob: { job in
+                        // Simple inline serial job run — might need a dispatch queue for real serialization
+                        job(&self.activeResponse!.state) {
+                            self.setStatus(status: .streaming)
+                            // Replace/append streaming message in state
+                            let streamingMsg = self.activeResponse!.state.message
+                            if let lastId = self.lastMessage?.id, lastId == streamingMsg.id {
+                                self.state.replaceMessage(at: self.state.messages.count - 1, with: streamingMsg)
+                            } else {
+                                self.state.pushMessage(streamingMsg)
+                            }
+                        }
+                    },
+                    onError: { error in
+                        thrownError = error
+                        self.onError?(error)
+                    },
+                    onToolCall: { toolCall in
+                        self.onToolCall?(toolCall)
+                    },
+                    onData: { data in
+                        self.onData?(data)
+                    }
+                )
+            )
+
+            if let thrownError {
+                throw thrownError
+            }
+
+            guard let lastSessionMessage = activeResponse?.state.message ?? lastMessage else {
+                throw ChatError.invalidLastSessionMessage(id: input.messageId ?? "unknown")
+            }
+            onFinish?(lastSessionMessage)
+            setStatus(status: .ready)
+
+        } catch {
+            if (error as NSError).domain == NSCocoaErrorDomain, (error as NSError).code == NSUserCancelledError {
+                setStatus(status: .ready)
+            } else {
+                onError?(error)
+                setStatus(status: .error, error: error)
+            }
+            throw error
+        }
+        if let sendAuto = sendAutomaticallyWhen, sendAuto(state.messages) {
+            guard autoSendRecursionCount < autoSendRecursionLimit else {
+                throw ChatError.tooManyRecursionAttempts(id: input.messageId ?? "unknown")
+            }
+            autoSendRecursionCount += 1
+            defer { autoSendRecursionCount -= 1 }
+            try await makeRequest(input: MakeRequestInput(
+                trigger: .submitMessage,
+                messageId: lastMessage?.id,
+                options: input.options
+            ))
         }
     }
 
