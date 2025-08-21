@@ -32,10 +32,8 @@ public class CustomChatTransport: DefaultChatTransport {
 }
 
 @Test func sendMessage() async throws {
-    let mockState = ChatState()
     let chatInit = try ChatInit(
         id: "test-chat",
-        state: mockState,
         transport: CustomChatTransport(
             apiConfig: ChatTransportApiConfig(
                 apiBaseUrl: "http://localhost:3001",
@@ -44,9 +42,9 @@ public class CustomChatTransport: DefaultChatTransport {
         )
     )
     let chat = Chat(chatInit)
-    let cancellable = chat.state.$messages.sink { messages in
-        dump(messages)
-    }
+    // let cancellable = chat.state.$messages.sink { messages in
+    //     dump(messages)
+    // }
     let message = UIMessage(id: "test-message", role: .user, parts: [])
     try await chat.sendMessage(input: .message(message, messageId: nil))
     #expect(chat.state.messages.count == 2, "Message should be added, response should be received")
@@ -55,18 +53,26 @@ public class CustomChatTransport: DefaultChatTransport {
     dump(chat.state.messages)
 }
 
-// @Test func sendTextAndFilesMessage() async throws {
-//     let mockState = ChatState()
-//     let chat = Chat(ChatInit(id: "test-chat", state: mockState))
-//     let testFile = File(filename: "a.txt", url: URL(string: "file:///a.txt")!, mediaType: "text/plain")
-//     try await chat.sendMessage(input: .text("hi", files: [testFile], metadata: nil, messageId: nil))
-//     #expect(chat.state.messages.count == 1, "One message should be present")
-//     let message = chat.state.messages.first!
-//     #expect(message.parts.count == 2, "Message should have file and text part")
-//     #expect(message.parts[0] is FilePart, "First part should be FilePart")
-//     #expect(message.parts[1] is TextPart, "Second part should be TextPart")
-//     dump(chat.state.messages)
-// }
+@Test func sendTextAndFilesMessage() async throws {
+    let chatInit = try ChatInit(
+        id: "test-chat",
+        transport: CustomChatTransport(
+            apiConfig: ChatTransportApiConfig(
+                apiBaseUrl: "http://localhost:3001",
+                apiChatPath: "/chat/test"
+            )
+        )
+    )
+    let chat = Chat(chatInit)
+    let testFile = File(filename: "300.jpg", url: URL(string: "https://fastly.picsum.photos/id/90/200/300.jpg?hmac=yKaRyhG3EFez3DuYnuPdh29pSCXLc8DDXROYdKQQp30")!, mediaType: "image/jpg")
+    try await chat.sendMessage(input: .text("What do you see in the picture?", files: [testFile], metadata: nil, messageId: nil))
+    #expect(chat.state.messages.count == 2, "Message and response should be present")
+    let message = chat.state.messages.first!
+    #expect(message.parts.count == 2, "Message should have file and text part")
+    #expect(message.parts[0] is FilePart, "First part should be FilePart")
+    #expect(message.parts[1] is TextPart, "Second part should be TextPart")
+    dump(chat.state.messages)
+}
 
 // @Test func sendAutomaticallyWhen_noInfiniteRecursion() async throws {
 //     let mockState = ChatState()

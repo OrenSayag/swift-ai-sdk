@@ -99,6 +99,11 @@ public extension Chat {
                                 reasoningPart.state = .done
                                 activeResponse.state.activeReasoningParts.removeValue(forKey: id)
                             }
+                        case let .file(url, mediaType, _):
+                            if let fileURL = URL(string: url) {
+                                let filePart = FilePart(filename: "", url: fileURL, mediaType: mediaType)
+                                activeResponse.state.message.parts.append(filePart)
+                            }
                         case .toolInputAvailable, .toolInputError:
                             self.onToolCall?(chunk)
                         case .dataChunk:

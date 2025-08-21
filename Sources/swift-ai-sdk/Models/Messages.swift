@@ -13,6 +13,7 @@ public enum MessagePartState: String {
 }
 
 public class TextPart: MessagePart {
+    public let type = "text"
     public var text: String
     public var state: MessagePartState?
     public var providerMetadata: Any?
@@ -30,6 +31,7 @@ public class TextPart: MessagePart {
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "text": text,
+            "type": type,
         ]
         if let state = state {
             dict["state"] = state.rawValue
@@ -42,6 +44,7 @@ public class TextPart: MessagePart {
 }
 
 public class ReasoningPart: MessagePart {
+    public let type = "reasoning"
     public var text: String
     public var state: MessagePartState?
     public var providerMetadata: Any?
@@ -60,6 +63,7 @@ public class ReasoningPart: MessagePart {
         var dict: [String: Any] = [
             "type": "reasoning",
             "text": text,
+            "type": type,
         ]
         if let state = state {
             dict["state"] = state.rawValue
@@ -78,6 +82,7 @@ public struct File {
 }
 
 public struct FilePart: MessagePart {
+    public let type = "file"
     public let filename: String
     public let url: URL
     public let mediaType: String
@@ -86,6 +91,7 @@ public struct FilePart: MessagePart {
             "filename": filename,
             "url": url.absoluteString,
             "mediaType": mediaType,
+            "type": type,
         ]
         return dict
     }
