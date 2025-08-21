@@ -41,6 +41,36 @@ public class TextPart: MessagePart {
     }
 }
 
+public class ReasoningPart: MessagePart {
+    public var text: String
+    public var state: MessagePartState?
+    public var providerMetadata: Any?
+
+    public init(
+        text: String = "",
+        state: MessagePartState? = nil,
+        providerMetadata: Any? = nil
+    ) {
+        self.text = text
+        self.state = state
+        self.providerMetadata = providerMetadata
+    }
+
+    public func asDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "type": "reasoning",
+            "text": text,
+        ]
+        if let state = state {
+            dict["state"] = state.rawValue
+        }
+        if let metadata = providerMetadata {
+            dict["providerMetadata"] = metadata
+        }
+        return dict
+    }
+}
+
 public struct File {
     public let filename: String
     public let url: URL

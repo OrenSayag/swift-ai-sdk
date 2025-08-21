@@ -75,9 +75,30 @@ public extension Chat {
                                 activeResponse.state.activeTextParts[id] = textPart
                             }
                             activeResponse.state.activeTextParts.removeValue(forKey: id)
-                        case .reasoningStart, .reasoningDelta, .reasoningEnd:
-                            // Extend with similar logic for reasoning parts
-                            break
+                        case let .reasoningStart(id, providerMetadata):
+                            let reasoningPart = ReasoningPart(
+                                text: "",
+                                state: .streaming,
+                                providerMetadata: providerMetadata
+                            )
+                            activeResponse.state.activeReasoningParts[id] = reasoningPart
+                            activeResponse.state.message.parts.append(reasoningPart)
+                        case let .reasoningDelta(id, delta, providerMetadata):
+                            if let reasoningPart = activeResponse.state.activeReasoningParts[id] as? ReasoningPart {
+                                reasoningPart.text += delta
+                                if let providerMetadata = providerMetadata {
+                                    reasoningPart.providerMetadata = providerMetadata
+                                }
+                                activeResponse.state.activeReasoningParts[id] = reasoningPart
+                            }
+                        case let .reasoningEnd(id, providerMetadata):
+                            if let reasoningPart = activeResponse.state.activeReasoningParts[id] as? ReasoningPart {
+                                if let providerMetadata = providerMetadata {
+                                    reasoningPart.providerMetadata = providerMetadata
+                                }
+                                reasoningPart.state = .done
+                                activeResponse.state.activeReasoningParts.removeValue(forKey: id)
+                            }
                         case .toolInputAvailable, .toolInputError:
                             self.onToolCall?(chunk)
                         case .dataChunk:
