@@ -61,10 +61,21 @@ public enum MessagePartState: String {
     case streaming, done
 }
 
-public struct TextPart: MessagePart {
+public class TextPart: MessagePart {
     public var text: String
     public var state: MessagePartState?
     public var providerMetadata: Any?
+
+    public init(
+        text: String,
+        state: MessagePartState? = nil,
+        providerMetadata: Any? = nil
+    ) {
+        self.text = text
+        self.state = state
+        self.providerMetadata = providerMetadata
+    }
+
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "text": text,
@@ -453,8 +464,58 @@ public class Chat {
             let asyncStream = processUIMessageStream(
                 options: ProcessUIMessageStreamOptions(
                     stream: stream,
-                    runUpdateMessageJob: { _ in
+                    runUpdateMessageJob: { chunk in
                         self.setStatus(status: .streaming)
+
+                        guard var activeResponse = self.activeResponse else { return }
+
+                        switch chunk {
+                        case let .textStart(id, _):
+                            activeResponse.state.activeTextParts[id] = TextPart(
+                                text: "", state: .streaming
+                            )
+                            activeResponse.state.message.parts.append(
+                                activeResponse.state.activeTextParts[id]!)
+                        case let .textDelta(id, delta, _):
+                            if var textPart = activeResponse.state.activeTextParts[id] as? TextPart,
+                               let existingText = textPart.text as? String
+                            {
+                                textPart.text = existingText + delta
+                                activeResponse.state.activeTextParts[id] = textPart
+                            }
+                        case let .textEnd(id, _):
+                            if var textPart = activeResponse.state.activeTextParts[id] as? TextPart {
+                                textPart.state = .done
+                                activeResponse.state.activeTextParts[id] = textPart
+                            }
+                            activeResponse.state.activeTextParts.removeValue(forKey: id)
+                        case .reasoningStart, .reasoningDelta, .reasoningEnd:
+                            // Extend with similar logic for reasoning parts
+                            break
+                        case .toolInputAvailable, .toolInputError:
+                            self.onToolCall?(chunk)
+                        case .dataChunk:
+                            self.onData?(chunk)
+                        case let .error(errorText):
+                            self.onError?(
+                                NSError(
+                                    domain: "Chat", code: 0,
+                                    userInfo: [NSLocalizedDescriptionKey: errorText]
+                                ))
+                        default:
+                            break
+                        }
+
+                        self.activeResponse = activeResponse
+
+                        let replaceLastMessage = activeResponse.state.message.id == self.lastMessage?.id
+
+                        if replaceLastMessage {
+                            self.state.replaceMessage(at: self.state.messages.count - 1,
+                                                      with: activeResponse.state.message)
+                        } else {
+                            self.state.pushMessage(activeResponse.state.message)
+                        }
                     },
                     onError: { error in
                         thrownError = error
@@ -469,12 +530,9 @@ public class Chat {
                 )
             )
 
-            // Consume the stream to completion
-            print("Starting to consume stream...")
             for await _ in asyncStream {
-                // The stream processing is handled in the options callbacks
+                // The stream processing is handled in processUIMessageStream
             }
-            print("Finished consuming stream")
 
             if let thrownError {
                 throw thrownError

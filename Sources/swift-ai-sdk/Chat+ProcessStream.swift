@@ -21,9 +21,7 @@ public struct StreamingUIMessageState: @unchecked Sendable {
 
 public struct ProcessUIMessageStreamOptions: @unchecked Sendable {
     var stream: AsyncStream<UIMessageChunk>
-    var runUpdateMessageJob:
-        (_ job: @escaping (_ state: inout StreamingUIMessageState, _ write: () -> Void) -> Void)
-            async -> Void
+    var runUpdateMessageJob: (_ chunk: UIMessageChunk) async -> Void
     var onError: (Error) -> Void
     var onToolCall: ((Any) -> Void)?
     var onData: ((Any) -> Void)?
@@ -62,46 +60,8 @@ extension Chat {
             Task {
                 do {
                     for await chunk in stream {
-                        await options.runUpdateMessageJob { state, write in
-                            switch chunk {
-                            case let .textStart(id, _):
-                                // Update state.activeTextParts, append to state's message.parts, etc
-                                state.activeTextParts[id] = TextPart(text: "", state: .streaming)
-                                state.message.parts.append(state.activeTextParts[id]!)
-                                write()
-                            case let .textDelta(id, delta, _):
-                                if var textPart = state.activeTextParts[id] as? TextPart,
-                                    let existingText = textPart.text as? String
-                                {
-                                    textPart.text = existingText + delta
-                                    state.activeTextParts[id] = textPart
-                                }
-                                write()
-                            case let .textEnd(id, _):
-                                if var textPart = state.activeTextParts[id] as? TextPart {
-                                    textPart.state = .done
-                                    state.activeTextParts[id] = textPart
-                                }
-                                state.activeTextParts.removeValue(forKey: id)
-                                write()
-                            case .reasoningStart, .reasoningDelta, .reasoningEnd:
-                                // Extend with similar logic for reasoning parts
-                                write()
-                            case .toolInputAvailable, .toolInputError:
-                                options.onToolCall?(chunk)
-                                write()
-                            case .dataChunk:
-                                options.onData?(chunk)
-                                write()
-                            case let .error(errorText):
-                                options.onError(
-                                    NSError(
-                                        domain: "Chat", code: 0,
-                                        userInfo: [NSLocalizedDescriptionKey: errorText]))
-                            default:
-                                write()
-                            }
-                        }
+                        // Process the chunk and update the state
+                        await options.runUpdateMessageJob(chunk)
                         continuation.yield(chunk)
                     }
                     continuation.finish()

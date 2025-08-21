@@ -88,7 +88,7 @@ public enum UIMessageChunk: @unchecked Sendable {
 
 public struct ProviderMetadata: Codable {
     public static func from(_: Any?) -> ProviderMetadata? {
-        print("ProviderMetadata not implemented")
+        // print("ProviderMetadata not implemented")
         return ProviderMetadata(
         )
     }

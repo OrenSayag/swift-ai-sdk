@@ -73,7 +73,8 @@ public class DefaultChatTransport: ChatTransport {
         guard let realpath = path ?? apiConfig.apiReconnectToStreamPath else {
             throw NSError(
                 domain: "Chat", code: 1001,
-                userInfo: [NSLocalizedDescriptionKey: "Reconnect path is not set"])
+                userInfo: [NSLocalizedDescriptionKey: "Reconnect path is not set"]
+            )
         }
         url.appendPathComponent(realpath)
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
@@ -85,10 +86,11 @@ public class DefaultChatTransport: ChatTransport {
             throw NSError(domain: "Chat", code: 1002)
         }
         if httpResp.statusCode == 204 { return nil }
-        guard (200..<300).contains(httpResp.statusCode) else {
+        guard (200 ..< 300).contains(httpResp.statusCode) else {
             throw NSError(
                 domain: "Chat", code: httpResp.statusCode,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch the chat response"])
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch the chat response"]
+            )
         }
         return parseEventStream(bytes: bytes)
     }
@@ -99,15 +101,14 @@ public class DefaultChatTransport: ChatTransport {
         UIMessageChunk
     > {
         let (response, bytes) = try await streamURL(request: request)
-        guard let httpResp = response as? HTTPURLResponse, (200..<300).contains(httpResp.statusCode)
+        guard let httpResp = response as? HTTPURLResponse, (200 ..< 300).contains(httpResp.statusCode)
         else {
             throw NSError(domain: "Chat", code: 1002)
         }
         return parseEventStream(bytes: bytes)
     }
 
-    private func streamURL(request: URLRequest) async throws -> (URLResponse, URLSession.AsyncBytes)
-    {
+    private func streamURL(request: URLRequest) async throws -> (URLResponse, URLSession.AsyncBytes) {
         let (bytes, response) = try await session.bytes(for: request)
         return (response, bytes)
     }
@@ -118,27 +119,21 @@ public class DefaultChatTransport: ChatTransport {
                 do {
                     var buffer = ""
                     for try await line in bytes.lines {
-                        // Debug: print raw lines to see what we're receiving
-                        print("Raw SSE line: '\(line)'")
-
-                        // Skip empty lines and lines that don't start with "data: "
                         guard !line.isEmpty else { continue }
 
                         if line.hasPrefix("data: ") {
-                            let dataContent = String(line.dropFirst(6))  // Remove "data: " prefix
+                            let dataContent = String(line.dropFirst(6)) // Remove "data: " prefix
 
-                            // Handle special SSE messages
                             if dataContent == "[DONE]" {
                                 continuation.finish()
                                 return
                             }
 
-                            // Try to parse the data content as JSON
                             if let data = dataContent.data(using: .utf8),
-                                let json = try? JSONSerialization.jsonObject(with: data),
-                                let chunk = UIMessageChunk.from(json: json)
+                               let json = try? JSONSerialization.jsonObject(with: data),
+                               let chunk = UIMessageChunk.from(json: json)
                             {
-                                print("Successfully parsed chunk: \(chunk)")
+                                // print("Successfully parsed chunk: \(chunk)")
                                 continuation.yield(chunk)
                             } else {
                                 print("Failed to parse chunk from data: '\(dataContent)'")

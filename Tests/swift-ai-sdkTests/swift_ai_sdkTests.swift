@@ -46,7 +46,7 @@ public class CustomChatTransport: DefaultChatTransport {
     let chat = Chat(chatInit)
     let message = UIMessage(id: "test-message", role: .user, parts: [])
     try await chat.sendMessage(input: .message(message, messageId: nil))
-    #expect(chat.state.messages.count == 1, "Message should be added")
+    #expect(chat.state.messages.count == 2, "Message should be added, response should be received")
     #expect(chat.state.messages.first?.id == "test-message", "Should use correct message id")
     #expect(chat.state.messages.first?.role == .user, "Role should be user")
     dump(chat.state.messages)
