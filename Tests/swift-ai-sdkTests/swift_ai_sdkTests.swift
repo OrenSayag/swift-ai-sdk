@@ -44,6 +44,9 @@ public class CustomChatTransport: DefaultChatTransport {
         )
     )
     let chat = Chat(chatInit)
+    chat.state.$messages.sink { messages in
+        dump(messages)
+    }
     let message = UIMessage(id: "test-message", role: .user, parts: [])
     try await chat.sendMessage(input: .message(message, messageId: nil))
     #expect(chat.state.messages.count == 2, "Message should be added, response should be received")

@@ -1,6 +1,7 @@
 // The Swift Programming Language
 // https://docs.swift.org/swift-book
 
+import Combine
 import Foundation
 
 public enum ChatError: Error {
@@ -150,9 +151,9 @@ public enum ChatStatus {
 }
 
 public class ChatState {
-    public var status: ChatStatus = .ready
-    public var error: Error?
-    public var messages: [UIMessage] = []
+    @Published public var status: ChatStatus = .ready
+    @Published public var error: Error?
+    @Published public var messages: [UIMessage] = []
 
     public func pushMessage(_ message: UIMessage) {
         messages.append(message)
