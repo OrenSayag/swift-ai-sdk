@@ -67,7 +67,7 @@ public struct TextPart: MessagePart {
     public var providerMetadata: Any?
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
-            "text": text
+            "text": text,
         ]
         if let state = state {
             dict["state"] = state.rawValue
@@ -81,7 +81,7 @@ public struct TextPart: MessagePart {
 
 struct ActiveResponse {
     var state: StreamingUIMessageState
-    var task: URLSessionDataTask?  // For abort/cancel
+    var task: URLSessionDataTask? // For abort/cancel
 }
 
 public struct File {
@@ -188,6 +188,7 @@ public struct ChatInit {
     public var sTextPartendAutomaticallyWhen: SendAutomaticallyWhen?
     public var transport: ChatTransport
     public var sendAutomaticallyWhen: SendAutomaticallyWhen?
+    var maxToolCalls: Int
 
     public init(
         id: String? = nil,
@@ -200,6 +201,7 @@ public struct ChatInit {
         sendAutomaticallyWhen: SendAutomaticallyWhen? = nil,
         transport: ChatTransport? = nil,
         defaultChatTransportApiConfig: ChatTransportApiConfig? = nil,
+        maxToolCalls: Int = 10
     ) throws {
         self.id = id
         self.state = state
@@ -209,14 +211,15 @@ public struct ChatInit {
         self.onToolCall = onToolCall
         self.onData = onData
         self.sendAutomaticallyWhen = sendAutomaticallyWhen
+        self.maxToolCalls = maxToolCalls
         guard defaultChatTransportApiConfig != nil || transport != nil else {
             throw ChatError.invalidTransportConfiguration(id: id ?? "unknown")
         }
         self.transport =
             transport
-            ?? DefaultChatTransport(
-                apiConfig: defaultChatTransportApiConfig!
-            )
+                ?? DefaultChatTransport(
+                    apiConfig: defaultChatTransportApiConfig!
+                )
     }
 }
 
@@ -230,6 +233,7 @@ public class Chat {
     public let onData: ChatOnDataCallback?
     public let sendAutomaticallyWhen: SendAutomaticallyWhen?
     public let transport: ChatTransport
+    let maxToolCalls: Int
 
     public init(_ initStruct: ChatInit) {
         generateId = initStruct.generateId ?? { UUID().uuidString }
@@ -241,6 +245,7 @@ public class Chat {
         onData = initStruct.onData
         sendAutomaticallyWhen = initStruct.sendAutomaticallyWhen
         transport = initStruct.transport
+        maxToolCalls = initStruct.maxToolCalls
     }
 
     public enum SendMessageInput {
@@ -378,11 +383,12 @@ public class Chat {
     var activeResponse: ActiveResponse?
 
     private static let messageJobQueue = DispatchQueue(
-        label: "chat.message.job.queue", qos: .userInitiated)
+        label: "chat.message.job.queue", qos: .userInitiated
+    )
 
     func runUpdateMessageJob(
         job: @escaping @Sendable (_ state: StreamingUIMessageState, _ write: @escaping () -> Void)
-            async -> Void,
+        async -> Void,
         state: StreamingUIMessageState,
         write: @escaping @Sendable () -> Void
     ) async {
@@ -397,8 +403,6 @@ public class Chat {
     }
 
     private var autoSendRecursionCount = 0
-    // TODO: make configurable
-    private let autoSendRecursionLimit = 10
 
     public func makeRequest(input: MakeRequestInput) async throws {
         setStatus(status: .submitted, error: nil)
@@ -449,7 +453,7 @@ public class Chat {
             let asyncStream = processUIMessageStream(
                 options: ProcessUIMessageStreamOptions(
                     stream: stream,
-                    runUpdateMessageJob: { job in
+                    runUpdateMessageJob: { _ in
                         self.setStatus(status: .streaming)
                     },
                     onError: { error in
@@ -484,7 +488,7 @@ public class Chat {
 
         } catch {
             if (error as NSError).domain == NSCocoaErrorDomain,
-                (error as NSError).code == NSUserCancelledError
+               (error as NSError).code == NSUserCancelledError
             {
                 setStatus(status: .ready)
             } else {
@@ -494,7 +498,7 @@ public class Chat {
             throw error
         }
         if let sendAuto = sendAutomaticallyWhen, sendAuto(state.messages) {
-            guard autoSendRecursionCount < autoSendRecursionLimit else {
+            guard autoSendRecursionCount < maxToolCalls else {
                 throw ChatError.tooManyRecursionAttempts(id: input.messageId ?? "unknown")
             }
             autoSendRecursionCount += 1
