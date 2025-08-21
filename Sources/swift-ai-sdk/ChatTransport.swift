@@ -1,26 +1,5 @@
 import Foundation
 
-public protocol ChatTransport {
-    func sendMessages(
-        chatId: String,
-        messages: [UIMessage],
-        abortSignal: Task<Void, Never>?,
-        metadata: [String: Any]?,
-        headers: [String: String]?,
-        body: [String: Any]?,
-        trigger: ChatRequestTrigger,
-        messageId: String?
-    ) async throws -> AsyncStream<UIMessageChunk>
-
-    func reconnectToStream(
-        chatId: String,
-        metadata: [String: Any]?,
-        headers: [String: String]?,
-        body: [String: Any]?,
-        path: String?
-    ) async throws -> AsyncStream<UIMessageChunk>?
-}
-
 public class DefaultChatTransport: ChatTransport {
     public let apiConfig: ChatTransportApiConfig
     public let session: URLSession
@@ -133,7 +112,6 @@ public class DefaultChatTransport: ChatTransport {
                                let json = try? JSONSerialization.jsonObject(with: data),
                                let chunk = UIMessageChunk.from(json: json)
                             {
-                                // print("Successfully parsed chunk: \(chunk)")
                                 continuation.yield(chunk)
                             } else {
                                 print("Failed to parse chunk from data: '\(dataContent)'")

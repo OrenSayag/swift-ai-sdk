@@ -44,7 +44,7 @@ public class CustomChatTransport: DefaultChatTransport {
         )
     )
     let chat = Chat(chatInit)
-    chat.state.$messages.sink { messages in
+    let cancellable = chat.state.$messages.sink { messages in
         dump(messages)
     }
     let message = UIMessage(id: "test-message", role: .user, parts: [])
