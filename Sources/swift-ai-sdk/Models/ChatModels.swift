@@ -97,7 +97,7 @@ public struct ChatInit {
 
     public init(
         id: String? = nil,
-        state: ChatState,
+        state: ChatState? = nil,
         generateId: (() -> String)? = nil,
         onError: ChatOnErrorCallback? = nil,
         onFinish: ChatOnFinishCallback? = nil,
@@ -109,7 +109,6 @@ public struct ChatInit {
         maxToolCalls: Int = 10
     ) throws {
         self.id = id
-        self.state = state
         self.generateId = generateId
         self.onError = onError
         self.onFinish = onFinish
@@ -120,6 +119,7 @@ public struct ChatInit {
         guard defaultChatTransportApiConfig != nil || transport != nil else {
             throw ChatError.invalidTransportConfiguration(id: id ?? "unknown")
         }
+        self.state = state ?? ChatState()
         self.transport =
             transport
                 ?? DefaultChatTransport(
