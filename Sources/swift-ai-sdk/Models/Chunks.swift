@@ -9,6 +9,8 @@ public enum UIMessageChunk: @unchecked Sendable {
     case reasoningStart(id: String, providerMetadata: ProviderMetadata?)
     case reasoningDelta(id: String, delta: String, providerMetadata: ProviderMetadata?)
     case reasoningEnd(id: String, providerMetadata: ProviderMetadata?)
+    case reasoning(text: String, providerMetadata: ProviderMetadata?)
+    case reasoningPartFinish
     case error(errorText: String)
 
     case toolInputAvailable(
@@ -108,6 +110,8 @@ extension UIMessageChunk {
         case "reasoning-start": return fromReasoningStart(dict)
         case "reasoning-delta": return fromReasoningDelta(dict)
         case "reasoning-end": return fromReasoningEnd(dict)
+        case "reasoning": return fromReasoning(dict)
+        case "reasoning-part-finish": return .reasoningPartFinish
         case "error": return fromError(dict)
         case "tool-input-available": return fromToolInputAvailable(dict)
         case "tool-input-error": return fromToolInputError(dict)
@@ -174,6 +178,13 @@ extension UIMessageChunk {
     private static func fromReasoningEnd(_ dict: [String: Any]) -> UIMessageChunk? {
         .reasoningEnd(
             id: dict["id"] as? String ?? "",
+            providerMetadata: ProviderMetadata.from(dict["providerMetadata"])
+        )
+    }
+
+    private static func fromReasoning(_ dict: [String: Any]) -> UIMessageChunk? {
+        .reasoning(
+            text: dict["text"] as? String ?? "",
             providerMetadata: ProviderMetadata.from(dict["providerMetadata"])
         )
     }
