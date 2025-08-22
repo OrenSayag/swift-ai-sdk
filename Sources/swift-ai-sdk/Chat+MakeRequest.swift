@@ -1,7 +1,7 @@
 import Foundation
 
-extension Chat {
-    public func makeRequest(input: MakeRequestInput) async throws {
+public extension Chat {
+    func makeRequest(input: MakeRequestInput) async throws {
         setStatus(status: .submitted, error: nil)
 
         let streamingState = createStreamingUIMessageState(
@@ -63,8 +63,7 @@ extension Chat {
                             activeResponse.state.activeTextParts[id] = textPart
                             activeResponse.state.message.parts.append(textPart)
                         case let .textDelta(id, delta, providerMetadata):
-                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart
-                            {
+                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart {
                                 textPart.text += delta
                                 if let providerMetadata = providerMetadata {
                                     textPart.providerMetadata = providerMetadata
@@ -72,8 +71,7 @@ extension Chat {
                                 activeResponse.state.activeTextParts[id] = textPart
                             }
                         case let .textEnd(id, providerMetadata):
-                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart
-                            {
+                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart {
                                 if let providerMetadata = providerMetadata {
                                     textPart.providerMetadata = providerMetadata
                                 }
@@ -124,7 +122,8 @@ extension Chat {
                             )
                             activeResponse.state.message.parts.append(sourceUrlPart)
                         case let .sourceDocument(
-                            sourceId, mediaType, title, filename, providerMetadata):
+                            sourceId, mediaType, title, filename, providerMetadata
+                        ):
                             let sourceDocumentPart = SourceDocumentPart(
                                 sourceId: sourceId,
                                 mediaType: mediaType,
@@ -214,7 +213,8 @@ extension Chat {
                             }
                         case let .toolInputError(
                             toolCallId, toolName, input, providerExecuted, providerMetadata,
-                            dynamic, errorText):
+                            dynamic, errorText
+                        ):
                             if dynamic == true {
                                 if let dynamicToolPart = activeResponse.state.message.parts.first(
                                     where: {
@@ -259,7 +259,8 @@ extension Chat {
                                 }
                             }
                         case let .toolOutputAvailable(
-                            toolCallId, output, providerExecuted, dynamic, preliminary):
+                            toolCallId, output, providerExecuted, dynamic, preliminary
+                        ):
                             if dynamic == true {
                                 if let dynamicToolPart = activeResponse.state.message.parts.first(
                                     where: {
@@ -324,7 +325,7 @@ extension Chat {
                                 messageMetadata as? [String: Any]
                         case let .dataChunk(type, id, data, transient):
                             let dataPart = DataPart(
-                                dataName: String(type.dropFirst(5)),  // Remove "data-" prefix
+                                dataName: String(type.dropFirst(5)), // Remove "data-" prefix
                                 data: data,
                                 id: id
                             )
@@ -390,7 +391,7 @@ extension Chat {
 
         } catch {
             if (error as NSError).domain == NSCocoaErrorDomain,
-                (error as NSError).code == NSUserCancelledError
+               (error as NSError).code == NSUserCancelledError
             {
                 setStatus(status: .ready)
             } else {

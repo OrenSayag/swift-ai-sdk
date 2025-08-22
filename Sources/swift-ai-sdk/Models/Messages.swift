@@ -12,7 +12,7 @@ public enum MessagePartState: String {
     case streaming, done
 }
 
-public class TextPart: MessagePart {
+public class TextPart: MessagePart, ObservableObject {
     public let type = "text"
     public var text: String
     public var state: MessagePartState?
@@ -47,7 +47,7 @@ public class TextPart: MessagePart {
     }
 }
 
-public class ReasoningPart: MessagePart {
+public class ReasoningPart: MessagePart, ObservableObject {
     public let type = "reasoning"
     public var text: String
     public var state: MessagePartState?
@@ -387,7 +387,7 @@ public struct StepStartPart: MessagePart {
     }
 }
 
-public class UIMessage {
+public class UIMessage: Identifiable {
     public var id: String
     public let role: UIMessageRole
     public var parts: [MessagePart]
