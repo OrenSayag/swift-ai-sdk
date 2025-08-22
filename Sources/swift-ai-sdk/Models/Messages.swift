@@ -86,7 +86,7 @@ public struct FilePart: MessagePart {
     public let url: String
     public let mediaType: String
     public let providerMetadata: Any?
-    
+
     public init(
         filename: String? = nil,
         url: String,
@@ -98,7 +98,7 @@ public struct FilePart: MessagePart {
         self.mediaType = mediaType
         self.providerMetadata = providerMetadata
     }
-    
+
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "type": type,
@@ -121,7 +121,7 @@ public struct SourceUrlPart: MessagePart {
     public let url: String
     public let title: String?
     public let providerMetadata: Any?
-    
+
     public init(
         sourceId: String,
         url: String,
@@ -133,7 +133,7 @@ public struct SourceUrlPart: MessagePart {
         self.title = title
         self.providerMetadata = providerMetadata
     }
-    
+
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "type": type,
@@ -157,7 +157,7 @@ public struct SourceDocumentPart: MessagePart {
     public let title: String
     public let filename: String?
     public let providerMetadata: Any?
-    
+
     public init(
         sourceId: String,
         mediaType: String,
@@ -171,7 +171,7 @@ public struct SourceDocumentPart: MessagePart {
         self.filename = filename
         self.providerMetadata = providerMetadata
     }
-    
+
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "type": type,
@@ -206,11 +206,11 @@ public class ToolPart: MessagePart {
     public var providerExecuted: Bool?
     public var callProviderMetadata: Any?
     public var preliminary: Bool?
-    
+
     public var type: String {
         return "tool-\(toolName)"
     }
-    
+
     public init(
         toolName: String,
         toolCallId: String,
@@ -232,7 +232,7 @@ public class ToolPart: MessagePart {
         self.callProviderMetadata = callProviderMetadata
         self.preliminary = preliminary
     }
-    
+
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "type": type,
@@ -271,7 +271,7 @@ public class DynamicToolPart: MessagePart {
     public var errorText: String?
     public var callProviderMetadata: Any?
     public var preliminary: Bool?
-    
+
     public init(
         toolName: String,
         toolCallId: String,
@@ -291,7 +291,7 @@ public class DynamicToolPart: MessagePart {
         self.callProviderMetadata = callProviderMetadata
         self.preliminary = preliminary
     }
-    
+
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "type": type,
@@ -322,11 +322,11 @@ public class DataPart: MessagePart {
     public let dataName: String
     public let id: String?
     public let data: Any
-    
+
     public var type: String {
         return "data-\(dataName)"
     }
-    
+
     public init(
         dataName: String,
         data: Any,
@@ -336,7 +336,7 @@ public class DataPart: MessagePart {
         self.data = data
         self.id = id
     }
-    
+
     public func asDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "type": type,
@@ -351,16 +351,16 @@ public class DataPart: MessagePart {
 
 public struct StepStartPart: MessagePart {
     public let type = "step-start"
-    
+
     public init() {}
-    
+
     public func asDictionary() -> [String: Any] {
         return ["type": type]
     }
 }
 
 public class UIMessage {
-    public let id: String
+    public var id: String
     public let role: UIMessageRole
     public var parts: [MessagePart]
     public var metadata: [String: Any]?
@@ -390,11 +390,11 @@ public extension MessagePart {
     func isToolPart() -> Bool {
         return self is ToolPart
     }
-    
+
     func isDynamicToolPart() -> Bool {
         return self is DynamicToolPart
     }
-    
+
     func getToolName() -> String? {
         if let toolPart = self as? ToolPart {
             return toolPart.toolName

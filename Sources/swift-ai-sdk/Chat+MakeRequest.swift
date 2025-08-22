@@ -56,25 +56,28 @@ public extension Chat {
                         guard var activeResponse = self.activeResponse else { return }
 
                         switch chunk {
-                        case let .textStart(id, _):
-                            activeResponse.state.activeTextParts[id] = TextPart(
-                                text: "", state: .streaming
+                        case let .textStart(id, providerMetadata):
+                            let textPart = TextPart(
+                                text: "", state: .streaming, providerMetadata: providerMetadata
                             )
-                            activeResponse.state.message.parts.append(
-                                activeResponse.state.activeTextParts[id]!)
-                        case let .textDelta(id, delta, _):
-                            if var textPart = activeResponse.state.activeTextParts[id] as? TextPart,
-                               let existingText = textPart.text as? String
-                            {
-                                textPart.text = existingText + delta
+                            activeResponse.state.activeTextParts[id] = textPart
+                            activeResponse.state.message.parts.append(textPart)
+                        case let .textDelta(id, delta, providerMetadata):
+                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart {
+                                textPart.text += delta
+                                if let providerMetadata = providerMetadata {
+                                    textPart.providerMetadata = providerMetadata
+                                }
                                 activeResponse.state.activeTextParts[id] = textPart
                             }
-                        case let .textEnd(id, _):
-                            if var textPart = activeResponse.state.activeTextParts[id] as? TextPart {
+                        case let .textEnd(id, providerMetadata):
+                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart {
+                                if let providerMetadata = providerMetadata {
+                                    textPart.providerMetadata = providerMetadata
+                                }
                                 textPart.state = .done
-                                activeResponse.state.activeTextParts[id] = textPart
+                                activeResponse.state.activeTextParts.removeValue(forKey: id)
                             }
-                            activeResponse.state.activeTextParts.removeValue(forKey: id)
                         case let .reasoningStart(id, providerMetadata):
                             let reasoningPart = ReasoningPart(
                                 text: "",
@@ -99,14 +102,210 @@ public extension Chat {
                                 reasoningPart.state = .done
                                 activeResponse.state.activeReasoningParts.removeValue(forKey: id)
                             }
-                        case let .file(url, mediaType, _):
-                            if let fileURL = URL(string: url) {
-                                let filePart = FilePart(filename: "", url: fileURL, mediaType: mediaType)
-                                activeResponse.state.message.parts.append(filePart)
+                        case let .file(url, mediaType, providerMetadata):
+                            let filePart = FilePart(
+                                url: url,
+                                mediaType: mediaType,
+                                providerMetadata: providerMetadata
+                            )
+                            activeResponse.state.message.parts.append(filePart)
+                        case let .sourceUrl(sourceId, url, title, providerMetadata):
+                            let sourceUrlPart = SourceUrlPart(
+                                sourceId: sourceId,
+                                url: url,
+                                title: title,
+                                providerMetadata: providerMetadata
+                            )
+                            activeResponse.state.message.parts.append(sourceUrlPart)
+                        case let .sourceDocument(sourceId, mediaType, title, filename, providerMetadata):
+                            let sourceDocumentPart = SourceDocumentPart(
+                                sourceId: sourceId,
+                                mediaType: mediaType,
+                                title: title,
+                                filename: filename,
+                                providerMetadata: providerMetadata
+                            )
+                            activeResponse.state.message.parts.append(sourceDocumentPart)
+                        case let .toolInputStart(toolCallId, toolName, providerExecuted, dynamic):
+                            if dynamic == true {
+                                let dynamicToolPart = DynamicToolPart(
+                                    toolName: toolName,
+                                    toolCallId: toolCallId,
+                                    state: .inputStreaming
+                                )
+                                activeResponse.state.message.parts.append(dynamicToolPart)
+                            } else {
+                                let toolPart = ToolPart(
+                                    toolName: toolName,
+                                    toolCallId: toolCallId,
+                                    state: .inputStreaming,
+                                    providerExecuted: providerExecuted
+                                )
+                                activeResponse.state.message.parts.append(toolPart)
                             }
-                        case .toolInputAvailable, .toolInputError:
-                            self.onToolCall?(chunk)
-                        case .dataChunk:
+                        case let .toolInputDelta(toolCallId, inputTextDelta):
+                            // Find the tool part and update it with partial input
+                            if let toolPart = activeResponse.state.message.parts.first(where: {
+                                ($0 as? ToolPart)?.toolCallId == toolCallId
+                            }) as? ToolPart {
+                                // NOTE: consider parsing the partial JSON as typescript version does, will be useful for UX if rendered
+                                // For now, just store the delta as text
+                                toolPart.input = (toolPart.input as? String ?? "") + inputTextDelta
+                            } else if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
+                                ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                            }) as? DynamicToolPart {
+                                dynamicToolPart.input = (dynamicToolPart.input as? String ?? "") + inputTextDelta
+                            }
+                        case let .toolInputAvailable(toolCallId, toolName, input, providerExecuted, providerMetadata, dynamic):
+                            if dynamic == true {
+                                if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
+                                    ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                                }) as? DynamicToolPart {
+                                    dynamicToolPart.state = .inputAvailable
+                                    dynamicToolPart.input = input
+                                    dynamicToolPart.callProviderMetadata = providerMetadata
+                                } else {
+                                    let dynamicToolPart = DynamicToolPart(
+                                        toolName: toolName,
+                                        toolCallId: toolCallId,
+                                        state: .inputAvailable,
+                                        input: input,
+                                        callProviderMetadata: providerMetadata
+                                    )
+                                    activeResponse.state.message.parts.append(dynamicToolPart)
+                                }
+                            } else {
+                                if let toolPart = activeResponse.state.message.parts.first(where: {
+                                    ($0 as? ToolPart)?.toolCallId == toolCallId
+                                }) as? ToolPart {
+                                    toolPart.state = .inputAvailable
+                                    toolPart.input = input
+                                    toolPart.providerExecuted = providerExecuted
+                                    toolPart.callProviderMetadata = providerMetadata
+                                } else {
+                                    let toolPart = ToolPart(
+                                        toolName: toolName,
+                                        toolCallId: toolCallId,
+                                        state: .inputAvailable,
+                                        input: input,
+                                        providerExecuted: providerExecuted,
+                                        callProviderMetadata: providerMetadata
+                                    )
+                                    activeResponse.state.message.parts.append(toolPart)
+                                }
+                            }
+                            // Only call onToolCall for non-provider-executed tools
+                            if providerExecuted != true {
+                                self.onToolCall?(chunk)
+                            }
+                        case let .toolInputError(toolCallId, toolName, input, providerExecuted, providerMetadata, dynamic, errorText):
+                            if dynamic == true {
+                                if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
+                                    ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                                }) as? DynamicToolPart {
+                                    dynamicToolPart.state = .outputError
+                                    dynamicToolPart.input = input
+                                    dynamicToolPart.errorText = errorText
+                                    dynamicToolPart.callProviderMetadata = providerMetadata
+                                } else {
+                                    let dynamicToolPart = DynamicToolPart(
+                                        toolName: toolName,
+                                        toolCallId: toolCallId,
+                                        state: .outputError,
+                                        input: input,
+                                        errorText: errorText,
+                                        callProviderMetadata: providerMetadata
+                                    )
+                                    activeResponse.state.message.parts.append(dynamicToolPart)
+                                }
+                            } else {
+                                if let toolPart = activeResponse.state.message.parts.first(where: {
+                                    ($0 as? ToolPart)?.toolCallId == toolCallId
+                                }) as? ToolPart {
+                                    toolPart.state = .outputError
+                                    toolPart.input = input
+                                    toolPart.errorText = errorText
+                                    toolPart.providerExecuted = providerExecuted
+                                    toolPart.callProviderMetadata = providerMetadata
+                                } else {
+                                    let toolPart = ToolPart(
+                                        toolName: toolName,
+                                        toolCallId: toolCallId,
+                                        state: .outputError,
+                                        input: input,
+                                        errorText: errorText,
+                                        providerExecuted: providerExecuted,
+                                        callProviderMetadata: providerMetadata
+                                    )
+                                    activeResponse.state.message.parts.append(toolPart)
+                                }
+                            }
+                        case let .toolOutputAvailable(toolCallId, output, providerExecuted, dynamic, preliminary):
+                            if dynamic == true {
+                                if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
+                                    ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                                }) as? DynamicToolPart {
+                                    dynamicToolPart.state = .outputAvailable
+                                    dynamicToolPart.output = output
+                                    dynamicToolPart.preliminary = preliminary
+                                }
+                            } else {
+                                if let toolPart = activeResponse.state.message.parts.first(where: {
+                                    ($0 as? ToolPart)?.toolCallId == toolCallId
+                                }) as? ToolPart {
+                                    toolPart.state = .outputAvailable
+                                    toolPart.output = output
+                                    toolPart.providerExecuted = providerExecuted
+                                    toolPart.preliminary = preliminary
+                                }
+                            }
+                        case let .toolOutputError(toolCallId, errorText, providerExecuted, dynamic):
+                            if dynamic == true {
+                                if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
+                                    ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                                }) as? DynamicToolPart {
+                                    dynamicToolPart.state = .outputError
+                                    dynamicToolPart.errorText = errorText
+                                }
+                            } else {
+                                if let toolPart = activeResponse.state.message.parts.first(where: {
+                                    ($0 as? ToolPart)?.toolCallId == toolCallId
+                                }) as? ToolPart {
+                                    toolPart.state = .outputError
+                                    toolPart.errorText = errorText
+                                    toolPart.providerExecuted = providerExecuted
+                                }
+                            }
+                        case .startStep:
+                            let stepStartPart = StepStartPart()
+                            activeResponse.state.message.parts.append(stepStartPart)
+                        case .finishStep:
+                            // Reset active parts for new step
+                            activeResponse.state.activeTextParts = [:]
+                            activeResponse.state.activeReasoningParts = [:]
+                        case let .start(messageId, messageMetadata):
+                            if let messageId = messageId {
+                                activeResponse.state.message.id = messageId
+                            }
+                            if let messageMetadata = messageMetadata {
+                                activeResponse.state.message.metadata = messageMetadata as? [String: Any]
+                            }
+                        case let .finish(messageMetadata):
+                            if let messageMetadata = messageMetadata {
+                                activeResponse.state.message.metadata = messageMetadata as? [String: Any]
+                            }
+                        case let .messageMetadata(messageMetadata):
+                            activeResponse.state.message.metadata = messageMetadata as? [String: Any]
+                        case let .dataChunk(type, id, data, transient):
+                            let dataPart = DataPart(
+                                dataName: String(type.dropFirst(5)), // Remove "data-" prefix
+                                data: data,
+                                id: id
+                            )
+                            // Only add non-transient data parts to the message
+                            if transient != true {
+                                activeResponse.state.message.parts.append(dataPart)
+                            }
                             self.onData?(chunk)
                         case let .error(errorText):
                             self.onError?(
@@ -114,7 +313,11 @@ public extension Chat {
                                     domain: "Chat", code: 0,
                                     userInfo: [NSLocalizedDescriptionKey: errorText]
                                 ))
-                        default:
+                        case .abort:
+                            // Handle abort if needed
+                            break
+                        case .reasoning, .reasoningPartFinish:
+                            // These might be legacy cases, handle if needed
                             break
                         }
 

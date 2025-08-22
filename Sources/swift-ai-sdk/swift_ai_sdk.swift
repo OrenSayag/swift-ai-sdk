@@ -63,7 +63,7 @@ public class Chat {
 
     private func convertFilesToParts(_ files: [File]?) -> [FilePart] {
         guard let files = files else { return [] }
-        return files.map { FilePart(filename: $0.filename, url: $0.url, mediaType: $0.mediaType) }
+        return files.map { FilePart(filename: $0.filename, url: $0.url.absoluteString, mediaType: $0.mediaType) }
     }
 
     public func sendMessage(

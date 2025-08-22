@@ -31,8 +31,8 @@ public class CustomChatTransport: DefaultChatTransport {
     }
 }
 
-@Test func sendMessage() async throws {
-    let chatInit = try ChatInit(
+func createTestChatInit() throws -> ChatInit {
+    return try ChatInit(
         id: "test-chat",
         transport: CustomChatTransport(
             apiConfig: ChatTransportApiConfig(
@@ -41,7 +41,10 @@ public class CustomChatTransport: DefaultChatTransport {
             )
         )
     )
-    let chat = Chat(chatInit)
+}
+
+@Test func sendMessage() async throws {
+    let chat = try Chat(createTestChatInit())
     // let cancellable = chat.state.$messages.sink { messages in
     //     dump(messages)
     // }
@@ -54,16 +57,7 @@ public class CustomChatTransport: DefaultChatTransport {
 }
 
 @Test func sendTextAndFilesMessage() async throws {
-    let chatInit = try ChatInit(
-        id: "test-chat",
-        transport: CustomChatTransport(
-            apiConfig: ChatTransportApiConfig(
-                apiBaseUrl: "http://localhost:3001",
-                apiChatPath: "/chat/test"
-            )
-        )
-    )
-    let chat = Chat(chatInit)
+    let chat = try Chat(createTestChatInit())
     let testFile = File(filename: "300.jpg", url: URL(string: "https://fastly.picsum.photos/id/90/200/300.jpg?hmac=yKaRyhG3EFez3DuYnuPdh29pSCXLc8DDXROYdKQQp30")!, mediaType: "image/jpg")
     try await chat.sendMessage(input: .text("What do you see in the picture?", files: [testFile], metadata: nil, messageId: nil))
     #expect(chat.state.messages.count == 2, "Message and response should be present")
@@ -71,6 +65,41 @@ public class CustomChatTransport: DefaultChatTransport {
     #expect(message.parts.count == 2, "Message should have file and text part")
     #expect(message.parts[0] is FilePart, "First part should be FilePart")
     #expect(message.parts[1] is TextPart, "Second part should be TextPart")
+    dump(chat.state.messages)
+}
+
+@Test func sendToolCallMessage() async throws {
+    let chat = try Chat(createTestChatInit())
+
+    try await chat.sendMessage(input: .text("what is my nutrition settings?", files: nil, metadata: nil, messageId: nil))
+
+    #expect(chat.state.messages.count == 2, "User message and assistant response should be present")
+
+    // Examine the assistant message for tool parts
+    let assistantMessage = chat.state.messages.last!
+    #expect(assistantMessage.role == .assistant, "Last message should be from assistant")
+
+    // Check for tool parts in the response
+    let toolParts = assistantMessage.parts.compactMap { $0 as? ToolPart }
+    let dynamicToolParts = assistantMessage.parts.compactMap { $0 as? DynamicToolPart }
+
+    let totalToolParts = toolParts.count + dynamicToolParts.count
+    #expect(totalToolParts > 0, "Assistant message should contain tool parts")
+
+    // Verify tool parts have expected properties
+    for toolPart in toolParts {
+        #expect(!toolPart.toolName.isEmpty, "Tool part should have a tool name")
+        #expect(!toolPart.toolCallId.isEmpty, "Tool part should have a tool call ID")
+        #expect(toolPart.state != .inputStreaming, "Tool part should not be in streaming state after completion")
+    }
+
+    for dynamicToolPart in dynamicToolParts {
+        #expect(!dynamicToolPart.toolName.isEmpty, "Dynamic tool part should have a tool name")
+        #expect(!dynamicToolPart.toolCallId.isEmpty, "Dynamic tool part should have a tool call ID")
+        #expect(dynamicToolPart.state != .inputStreaming, "Dynamic tool part should not be in streaming state after completion")
+    }
+
+    print("Found \(toolParts.count) tool parts and \(dynamicToolParts.count) dynamic tool parts in response")
     dump(chat.state.messages)
 }
 
