@@ -1,6 +1,6 @@
 import Foundation
 
-public class DefaultChatTransport: ChatTransport {
+open class DefaultChatTransport: ChatTransport {
     public let apiConfig: ChatTransportApiConfig
     public let session: URLSession
 
@@ -9,7 +9,7 @@ public class DefaultChatTransport: ChatTransport {
         self.apiConfig = apiConfig
     }
 
-    public func sendMessages(
+    open func sendMessages(
         chatId: String,
         messages: [UIMessage],
         abortSignal _: Task<Void, Never>? = nil,
@@ -42,7 +42,7 @@ public class DefaultChatTransport: ChatTransport {
         return try await processResponseStream(request: request)
     }
 
-    public func reconnectToStream(
+    open func reconnectToStream(
         chatId _: String,
         metadata _: [String: Any]? = nil,
         headers: [String: String]? = nil,
@@ -66,7 +66,7 @@ public class DefaultChatTransport: ChatTransport {
             throw NSError(domain: "Chat", code: 1002)
         }
         if httpResp.statusCode == 204 { return nil }
-        guard (200..<300).contains(httpResp.statusCode) else {
+        guard (200 ..< 300).contains(httpResp.statusCode) else {
             throw NSError(
                 domain: "Chat", code: httpResp.statusCode,
                 userInfo: [NSLocalizedDescriptionKey: "Failed to fetch the chat response"]
@@ -81,15 +81,14 @@ public class DefaultChatTransport: ChatTransport {
         UIMessageChunk
     > {
         let (response, bytes) = try await streamURL(request: request)
-        guard let httpResp = response as? HTTPURLResponse, (200..<300).contains(httpResp.statusCode)
+        guard let httpResp = response as? HTTPURLResponse, (200 ..< 300).contains(httpResp.statusCode)
         else {
             throw NSError(domain: "Chat", code: 1002)
         }
         return parseEventStream(bytes: bytes)
     }
 
-    private func streamURL(request: URLRequest) async throws -> (URLResponse, URLSession.AsyncBytes)
-    {
+    private func streamURL(request: URLRequest) async throws -> (URLResponse, URLSession.AsyncBytes) {
         let (bytes, response) = try await session.bytes(for: request)
         return (response, bytes)
     }
@@ -103,7 +102,7 @@ public class DefaultChatTransport: ChatTransport {
                         guard !line.isEmpty else { continue }
 
                         if line.hasPrefix("data: ") {
-                            let dataContent = String(line.dropFirst(6))  // Remove "data: " prefix
+                            let dataContent = String(line.dropFirst(6)) // Remove "data: " prefix
 
                             if dataContent == "[DONE]" {
                                 continuation.finish()
@@ -111,8 +110,8 @@ public class DefaultChatTransport: ChatTransport {
                             }
 
                             if let data = dataContent.data(using: .utf8),
-                                let json = try? JSONSerialization.jsonObject(with: data),
-                                let chunk = UIMessageChunk.from(json: json)
+                               let json = try? JSONSerialization.jsonObject(with: data),
+                               let chunk = UIMessageChunk.from(json: json)
                             {
                                 continuation.yield(chunk)
                             } else {

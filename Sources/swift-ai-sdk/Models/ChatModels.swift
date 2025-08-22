@@ -74,6 +74,12 @@ public class ChatState {
     public func replaceMessage(at index: Int, with message: UIMessage) {
         messages[index] = message
     }
+
+    public init(messages: [UIMessage] = [], status: ChatStatus = .ready, error: Error? = nil) {
+        self.messages = messages
+        self.status = status
+        self.error = error
+    }
 }
 
 public typealias ChatOnErrorCallback = (Error) -> Void
