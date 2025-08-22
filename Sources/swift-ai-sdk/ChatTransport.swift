@@ -29,6 +29,7 @@ public class DefaultChatTransport: ChatTransport {
         if let body = body {
             requestBody.merge(body) { existingValue, _ in existingValue }
         }
+        dump(requestBody)
 
         var url = URL(string: apiConfig.apiBaseUrl)!
         url.appendPathComponent(apiConfig.apiChatPath)
@@ -65,7 +66,7 @@ public class DefaultChatTransport: ChatTransport {
             throw NSError(domain: "Chat", code: 1002)
         }
         if httpResp.statusCode == 204 { return nil }
-        guard (200 ..< 300).contains(httpResp.statusCode) else {
+        guard (200..<300).contains(httpResp.statusCode) else {
             throw NSError(
                 domain: "Chat", code: httpResp.statusCode,
                 userInfo: [NSLocalizedDescriptionKey: "Failed to fetch the chat response"]
@@ -80,14 +81,15 @@ public class DefaultChatTransport: ChatTransport {
         UIMessageChunk
     > {
         let (response, bytes) = try await streamURL(request: request)
-        guard let httpResp = response as? HTTPURLResponse, (200 ..< 300).contains(httpResp.statusCode)
+        guard let httpResp = response as? HTTPURLResponse, (200..<300).contains(httpResp.statusCode)
         else {
             throw NSError(domain: "Chat", code: 1002)
         }
         return parseEventStream(bytes: bytes)
     }
 
-    private func streamURL(request: URLRequest) async throws -> (URLResponse, URLSession.AsyncBytes) {
+    private func streamURL(request: URLRequest) async throws -> (URLResponse, URLSession.AsyncBytes)
+    {
         let (bytes, response) = try await session.bytes(for: request)
         return (response, bytes)
     }
@@ -101,7 +103,7 @@ public class DefaultChatTransport: ChatTransport {
                         guard !line.isEmpty else { continue }
 
                         if line.hasPrefix("data: ") {
-                            let dataContent = String(line.dropFirst(6)) // Remove "data: " prefix
+                            let dataContent = String(line.dropFirst(6))  // Remove "data: " prefix
 
                             if dataContent == "[DONE]" {
                                 continuation.finish()
@@ -109,8 +111,8 @@ public class DefaultChatTransport: ChatTransport {
                             }
 
                             if let data = dataContent.data(using: .utf8),
-                               let json = try? JSONSerialization.jsonObject(with: data),
-                               let chunk = UIMessageChunk.from(json: json)
+                                let json = try? JSONSerialization.jsonObject(with: data),
+                                let chunk = UIMessageChunk.from(json: json)
                             {
                                 continuation.yield(chunk)
                             } else {

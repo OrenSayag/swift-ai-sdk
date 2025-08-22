@@ -90,16 +90,18 @@ public enum UIMessageChunk: @unchecked Sendable {
 
 public struct ProviderMetadata: Codable {
     public static func from(_: Any?) -> ProviderMetadata? {
-        // print("ProviderMetadata not implemented")
-        return ProviderMetadata(
-        )
+        return ProviderMetadata()
+    }
+
+    public func asDictionary() -> [String: Any] {
+        return [:]
     }
 }
 
 extension UIMessageChunk {
     public static func from(json: Any) -> UIMessageChunk? {
         guard let dict = json as? [String: Any],
-              let type = dict["type"] as? String
+            let type = dict["type"] as? String
         else {
             return nil
         }

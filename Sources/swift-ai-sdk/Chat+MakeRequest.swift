@@ -1,7 +1,7 @@
 import Foundation
 
-public extension Chat {
-    func makeRequest(input: MakeRequestInput) async throws {
+extension Chat {
+    public func makeRequest(input: MakeRequestInput) async throws {
         setStatus(status: .submitted, error: nil)
 
         let streamingState = createStreamingUIMessageState(
@@ -63,7 +63,8 @@ public extension Chat {
                             activeResponse.state.activeTextParts[id] = textPart
                             activeResponse.state.message.parts.append(textPart)
                         case let .textDelta(id, delta, providerMetadata):
-                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart {
+                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart
+                            {
                                 textPart.text += delta
                                 if let providerMetadata = providerMetadata {
                                     textPart.providerMetadata = providerMetadata
@@ -71,7 +72,8 @@ public extension Chat {
                                 activeResponse.state.activeTextParts[id] = textPart
                             }
                         case let .textEnd(id, providerMetadata):
-                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart {
+                            if let textPart = activeResponse.state.activeTextParts[id] as? TextPart
+                            {
                                 if let providerMetadata = providerMetadata {
                                     textPart.providerMetadata = providerMetadata
                                 }
@@ -87,7 +89,9 @@ public extension Chat {
                             activeResponse.state.activeReasoningParts[id] = reasoningPart
                             activeResponse.state.message.parts.append(reasoningPart)
                         case let .reasoningDelta(id, delta, providerMetadata):
-                            if let reasoningPart = activeResponse.state.activeReasoningParts[id] as? ReasoningPart {
+                            if let reasoningPart = activeResponse.state.activeReasoningParts[id]
+                                as? ReasoningPart
+                            {
                                 reasoningPart.text += delta
                                 if let providerMetadata = providerMetadata {
                                     reasoningPart.providerMetadata = providerMetadata
@@ -95,7 +99,9 @@ public extension Chat {
                                 activeResponse.state.activeReasoningParts[id] = reasoningPart
                             }
                         case let .reasoningEnd(id, providerMetadata):
-                            if let reasoningPart = activeResponse.state.activeReasoningParts[id] as? ReasoningPart {
+                            if let reasoningPart = activeResponse.state.activeReasoningParts[id]
+                                as? ReasoningPart
+                            {
                                 if let providerMetadata = providerMetadata {
                                     reasoningPart.providerMetadata = providerMetadata
                                 }
@@ -117,7 +123,8 @@ public extension Chat {
                                 providerMetadata: providerMetadata
                             )
                             activeResponse.state.message.parts.append(sourceUrlPart)
-                        case let .sourceDocument(sourceId, mediaType, title, filename, providerMetadata):
+                        case let .sourceDocument(
+                            sourceId, mediaType, title, filename, providerMetadata):
                             let sourceDocumentPart = SourceDocumentPart(
                                 sourceId: sourceId,
                                 mediaType: mediaType,
@@ -151,16 +158,23 @@ public extension Chat {
                                 // NOTE: consider parsing the partial JSON as typescript version does, will be useful for UX if rendered
                                 // For now, just store the delta as text
                                 toolPart.input = (toolPart.input as? String ?? "") + inputTextDelta
-                            } else if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
-                                ($0 as? DynamicToolPart)?.toolCallId == toolCallId
-                            }) as? DynamicToolPart {
-                                dynamicToolPart.input = (dynamicToolPart.input as? String ?? "") + inputTextDelta
-                            }
-                        case let .toolInputAvailable(toolCallId, toolName, input, providerExecuted, providerMetadata, dynamic):
-                            if dynamic == true {
-                                if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
+                            } else if let dynamicToolPart = activeResponse.state.message.parts
+                                .first(where: {
                                     ($0 as? DynamicToolPart)?.toolCallId == toolCallId
-                                }) as? DynamicToolPart {
+                                }) as? DynamicToolPart
+                            {
+                                dynamicToolPart.input =
+                                    (dynamicToolPart.input as? String ?? "") + inputTextDelta
+                            }
+                        case let .toolInputAvailable(
+                            toolCallId, toolName, input, providerExecuted, providerMetadata, dynamic
+                        ):
+                            if dynamic == true {
+                                if let dynamicToolPart = activeResponse.state.message.parts.first(
+                                    where: {
+                                        ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                                    }) as? DynamicToolPart
+                                {
                                     dynamicToolPart.state = .inputAvailable
                                     dynamicToolPart.input = input
                                     dynamicToolPart.callProviderMetadata = providerMetadata
@@ -198,11 +212,15 @@ public extension Chat {
                             if providerExecuted != true {
                                 self.onToolCall?(chunk)
                             }
-                        case let .toolInputError(toolCallId, toolName, input, providerExecuted, providerMetadata, dynamic, errorText):
+                        case let .toolInputError(
+                            toolCallId, toolName, input, providerExecuted, providerMetadata,
+                            dynamic, errorText):
                             if dynamic == true {
-                                if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
-                                    ($0 as? DynamicToolPart)?.toolCallId == toolCallId
-                                }) as? DynamicToolPart {
+                                if let dynamicToolPart = activeResponse.state.message.parts.first(
+                                    where: {
+                                        ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                                    }) as? DynamicToolPart
+                                {
                                     dynamicToolPart.state = .outputError
                                     dynamicToolPart.input = input
                                     dynamicToolPart.errorText = errorText
@@ -240,11 +258,14 @@ public extension Chat {
                                     activeResponse.state.message.parts.append(toolPart)
                                 }
                             }
-                        case let .toolOutputAvailable(toolCallId, output, providerExecuted, dynamic, preliminary):
+                        case let .toolOutputAvailable(
+                            toolCallId, output, providerExecuted, dynamic, preliminary):
                             if dynamic == true {
-                                if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
-                                    ($0 as? DynamicToolPart)?.toolCallId == toolCallId
-                                }) as? DynamicToolPart {
+                                if let dynamicToolPart = activeResponse.state.message.parts.first(
+                                    where: {
+                                        ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                                    }) as? DynamicToolPart
+                                {
                                     dynamicToolPart.state = .outputAvailable
                                     dynamicToolPart.output = output
                                     dynamicToolPart.preliminary = preliminary
@@ -261,9 +282,11 @@ public extension Chat {
                             }
                         case let .toolOutputError(toolCallId, errorText, providerExecuted, dynamic):
                             if dynamic == true {
-                                if let dynamicToolPart = activeResponse.state.message.parts.first(where: {
-                                    ($0 as? DynamicToolPart)?.toolCallId == toolCallId
-                                }) as? DynamicToolPart {
+                                if let dynamicToolPart = activeResponse.state.message.parts.first(
+                                    where: {
+                                        ($0 as? DynamicToolPart)?.toolCallId == toolCallId
+                                    }) as? DynamicToolPart
+                                {
                                     dynamicToolPart.state = .outputError
                                     dynamicToolPart.errorText = errorText
                                 }
@@ -288,17 +311,20 @@ public extension Chat {
                                 activeResponse.state.message.id = messageId
                             }
                             if let messageMetadata = messageMetadata {
-                                activeResponse.state.message.metadata = messageMetadata as? [String: Any]
+                                activeResponse.state.message.metadata =
+                                    messageMetadata as? [String: Any]
                             }
                         case let .finish(messageMetadata):
                             if let messageMetadata = messageMetadata {
-                                activeResponse.state.message.metadata = messageMetadata as? [String: Any]
+                                activeResponse.state.message.metadata =
+                                    messageMetadata as? [String: Any]
                             }
                         case let .messageMetadata(messageMetadata):
-                            activeResponse.state.message.metadata = messageMetadata as? [String: Any]
+                            activeResponse.state.message.metadata =
+                                messageMetadata as? [String: Any]
                         case let .dataChunk(type, id, data, transient):
                             let dataPart = DataPart(
-                                dataName: String(type.dropFirst(5)), // Remove "data-" prefix
+                                dataName: String(type.dropFirst(5)),  // Remove "data-" prefix
                                 data: data,
                                 id: id
                             )
@@ -364,7 +390,7 @@ public extension Chat {
 
         } catch {
             if (error as NSError).domain == NSCocoaErrorDomain,
-               (error as NSError).code == NSUserCancelledError
+                (error as NSError).code == NSUserCancelledError
             {
                 setStatus(status: .ready)
             } else {

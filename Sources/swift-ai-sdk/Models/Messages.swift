@@ -37,7 +37,11 @@ public class TextPart: MessagePart {
             dict["state"] = state.rawValue
         }
         if let metadata = providerMetadata {
-            dict["providerMetadata"] = metadata
+            if let providerMetadata = metadata as? ProviderMetadata {
+                dict["providerMetadata"] = providerMetadata.asDictionary()
+            } else {
+                dict["providerMetadata"] = metadata
+            }
         }
         return dict
     }
@@ -68,7 +72,11 @@ public class ReasoningPart: MessagePart {
             dict["state"] = state.rawValue
         }
         if let metadata = providerMetadata {
-            dict["providerMetadata"] = metadata
+            if let providerMetadata = metadata as? ProviderMetadata {
+                dict["providerMetadata"] = providerMetadata.asDictionary()
+            } else {
+                dict["providerMetadata"] = metadata
+            }
         }
         return dict
     }
@@ -109,7 +117,11 @@ public struct FilePart: MessagePart {
             dict["filename"] = filename
         }
         if let metadata = providerMetadata {
-            dict["providerMetadata"] = metadata
+            if let providerMetadata = metadata as? ProviderMetadata {
+                dict["providerMetadata"] = providerMetadata.asDictionary()
+            } else {
+                dict["providerMetadata"] = metadata
+            }
         }
         return dict
     }
@@ -144,7 +156,11 @@ public struct SourceUrlPart: MessagePart {
             dict["title"] = title
         }
         if let metadata = providerMetadata {
-            dict["providerMetadata"] = metadata
+            if let providerMetadata = metadata as? ProviderMetadata {
+                dict["providerMetadata"] = providerMetadata.asDictionary()
+            } else {
+                dict["providerMetadata"] = metadata
+            }
         }
         return dict
     }
@@ -183,7 +199,11 @@ public struct SourceDocumentPart: MessagePart {
             dict["filename"] = filename
         }
         if let metadata = providerMetadata {
-            dict["providerMetadata"] = metadata
+            if let providerMetadata = metadata as? ProviderMetadata {
+                dict["providerMetadata"] = providerMetadata.asDictionary()
+            } else {
+                dict["providerMetadata"] = metadata
+            }
         }
         return dict
     }
@@ -252,7 +272,11 @@ public class ToolPart: MessagePart {
             dict["providerExecuted"] = providerExecuted
         }
         if let metadata = callProviderMetadata {
-            dict["callProviderMetadata"] = metadata
+            if let providerMetadata = metadata as? ProviderMetadata {
+                dict["callProviderMetadata"] = providerMetadata.asDictionary()
+            } else {
+                dict["callProviderMetadata"] = metadata
+            }
         }
         if let preliminary = preliminary {
             dict["preliminary"] = preliminary
@@ -309,7 +333,11 @@ public class DynamicToolPart: MessagePart {
             dict["errorText"] = errorText
         }
         if let metadata = callProviderMetadata {
-            dict["callProviderMetadata"] = metadata
+            if let providerMetadata = metadata as? ProviderMetadata {
+                dict["callProviderMetadata"] = providerMetadata.asDictionary()
+            } else {
+                dict["callProviderMetadata"] = metadata
+            }
         }
         if let preliminary = preliminary {
             dict["preliminary"] = preliminary
@@ -386,16 +414,16 @@ public class UIMessage {
     }
 }
 
-public extension MessagePart {
-    func isToolPart() -> Bool {
+extension MessagePart {
+    public func isToolPart() -> Bool {
         return self is ToolPart
     }
 
-    func isDynamicToolPart() -> Bool {
+    public func isDynamicToolPart() -> Bool {
         return self is DynamicToolPart
     }
 
-    func getToolName() -> String? {
+    public func getToolName() -> String? {
         if let toolPart = self as? ToolPart {
             return toolPart.toolName
         } else if let dynamicToolPart = self as? DynamicToolPart {
@@ -405,8 +433,8 @@ public extension MessagePart {
     }
 }
 
-public extension UIMessage {
-    func isCompleteWithToolCalls() -> Bool {
+extension UIMessage {
+    public func isCompleteWithToolCalls() -> Bool {
         if role != .assistant {
             return false
         }
@@ -427,14 +455,15 @@ public extension UIMessage {
         }
 
         // Check if we have tool invocations and all are in output-available state
-        return !lastStepToolInvocations.isEmpty && lastStepToolInvocations.allSatisfy { part in
-            if let toolPart = part as? ToolPart {
-                return toolPart.state == .outputAvailable
-            } else if let dynamicToolPart = part as? DynamicToolPart {
-                return dynamicToolPart.state == .outputAvailable
+        return !lastStepToolInvocations.isEmpty
+            && lastStepToolInvocations.allSatisfy { part in
+                if let toolPart = part as? ToolPart {
+                    return toolPart.state == .outputAvailable
+                } else if let dynamicToolPart = part as? DynamicToolPart {
+                    return dynamicToolPart.state == .outputAvailable
+                }
+                return false
             }
-            return false
-        }
     }
 }
 

@@ -146,18 +146,45 @@ func createTestChatInit() throws -> ChatInit {
     print("Found \(toolParts.count) tool parts, \(dynamicToolParts.count) dynamic tool parts")
 }
 
-// @Test func sendAutomaticallyWhen_noInfiniteRecursion() async throws {
-//     let mockState = ChatState()
-//     var recursionCount = 0
-//     let chat = Chat(ChatInit(
-//         id: "recursive-chat",
-//         state: mockState,
-//         sendAutomaticallyWhen: { _ in
-//             recursionCount += 1
-//             return recursionCount < 10 // If recursionLimit is 3, inner call will be prevented
-//         }
-//     ))
-//     let message = UIMessage(id: "rec-message", role: .user, parts: [])
-//     try await chat.sendMessage(input: .message(message, messageId: nil))
-//     #expect(recursionCount <= 3, "Recursion should be limited/prevented")
-// }
+@Test func autoResendWithToolCallCompletion() async throws {
+    let chatInit = try ChatInit(
+        id: "test-chat",
+        sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+        transport: CustomChatTransport(
+            apiConfig: ChatTransportApiConfig(
+                apiBaseUrl: "http://localhost:3001",
+                apiChatPath: "/chat/test"
+            )
+        ),
+    )
+
+    let chat = Chat(chatInit)
+
+    try await chat.sendMessage(input: .text("what is my nutrition settings?", files: nil, metadata: nil, messageId: nil))
+
+    print("Total messages after auto-send: \(chat.state.messages.count)")
+
+    let assistantMessages = chat.state.messages.filter { $0.role == .assistant }
+
+    if assistantMessages.count > 1 {
+        print("Auto-send was triggered (\(assistantMessages.count) assistant messages)")
+
+        let secondToLastAssistant = assistantMessages[assistantMessages.count - 2]
+        let hasToolParts = secondToLastAssistant.parts.contains { part in
+            part.isToolPart() || part.isDynamicToolPart()
+        }
+        #expect(hasToolParts, "Second-to-last assistant message should contain tool parts")
+
+        let lastAssistant = assistantMessages.last!
+        let hasOnlyToolParts = !lastAssistant.parts.isEmpty && lastAssistant.parts.allSatisfy { part in
+            part.isToolPart() || part.isDynamicToolPart()
+        }
+        #expect(!hasOnlyToolParts, "Last assistant message should not be only tool parts (should be response after tool execution)")
+
+    } else {
+        print("Auto-send was not triggered (only 1 assistant message)")
+        #expect(assistantMessages.count == 1, "Should have exactly 1 assistant message if no auto-send")
+    }
+
+    dump(chat.state.messages)
+}
