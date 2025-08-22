@@ -103,6 +103,49 @@ func createTestChatInit() throws -> ChatInit {
     dump(chat.state.messages)
 }
 
+@Test func testLastAssistantMessageIsCompleteWithToolCalls() async throws {
+    let chat = try Chat(createTestChatInit())
+
+    // Send initial message that should trigger tool calls
+    try await chat.sendMessage(input: .text("what is my nutrition settings?", files: nil, metadata: nil, messageId: nil))
+
+    #expect(chat.state.messages.count == 2, "Should have user message and assistant response")
+
+    // Test the utility function
+    let isComplete = lastAssistantMessageIsCompleteWithToolCalls(messages: chat.state.messages)
+
+    // Verify the last message is from assistant
+    let lastMessage = chat.state.messages.last!
+    #expect(lastMessage.role == .assistant, "Last message should be from assistant")
+
+    // Check if tool calls are complete using instance method
+    let isCompleteInstance = lastMessage.isCompleteWithToolCalls()
+    #expect(isComplete == isCompleteInstance, "Both methods should return the same result")
+
+    // If there are tool parts, verify the completion logic
+    let toolParts = lastMessage.parts.compactMap { $0 as? ToolPart }
+    let dynamicToolParts = lastMessage.parts.compactMap { $0 as? DynamicToolPart }
+    let hasToolParts = !toolParts.isEmpty || !dynamicToolParts.isEmpty
+
+    if hasToolParts {
+        #expect(isComplete, "Message with tool parts should be complete after processing")
+
+        // Verify all tool parts are in correct final state
+        for toolPart in toolParts {
+            #expect(toolPart.state == .outputAvailable, "Tool part should be in outputAvailable state")
+        }
+
+        for dynamicToolPart in dynamicToolParts {
+            #expect(dynamicToolPart.state == .outputAvailable, "Dynamic tool part should be in outputAvailable state")
+        }
+    } else {
+        #expect(!isComplete, "Message without tool parts should not be considered complete with tool calls")
+    }
+
+    print("Tool calls complete: \(isComplete)")
+    print("Found \(toolParts.count) tool parts, \(dynamicToolParts.count) dynamic tool parts")
+}
+
 // @Test func sendAutomaticallyWhen_noInfiniteRecursion() async throws {
 //     let mockState = ChatState()
 //     var recursionCount = 0

@@ -404,3 +404,44 @@ public extension MessagePart {
         return nil
     }
 }
+
+public extension UIMessage {
+    func isCompleteWithToolCalls() -> Bool {
+        if role != .assistant {
+            return false
+        }
+
+        // Find the last step-start index
+        let lastStepStartIndex = parts.enumerated().reduce(into: -1) { lastIndex, part in
+            if part.element is StepStartPart {
+                lastIndex = part.offset
+            }
+        }
+
+        // Get parts after the last step start (or all parts if no step start)
+        let lastStepParts = Array(parts.dropFirst(lastStepStartIndex + 1))
+
+        // Filter tool invocations in the last step
+        let lastStepToolInvocations = lastStepParts.filter { part in
+            part.isToolPart() || part.isDynamicToolPart()
+        }
+
+        // Check if we have tool invocations and all are in output-available state
+        return !lastStepToolInvocations.isEmpty && lastStepToolInvocations.allSatisfy { part in
+            if let toolPart = part as? ToolPart {
+                return toolPart.state == .outputAvailable
+            } else if let dynamicToolPart = part as? DynamicToolPart {
+                return dynamicToolPart.state == .outputAvailable
+            }
+            return false
+        }
+    }
+}
+
+public func lastAssistantMessageIsCompleteWithToolCalls(messages: [UIMessage]) -> Bool {
+    guard let lastMessage = messages.last else {
+        return false
+    }
+
+    return lastMessage.isCompleteWithToolCalls()
+}
