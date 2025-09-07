@@ -6,7 +6,7 @@ Swift package for consuming AI chat streams from a [Vercel AI SDK](https://ai-sd
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-username/swift-ai-sdk.git", from: "1.0.0")
+    .package(url: "https://github.com/OrenSayag/swift-ai-sdk.git", from: "1.0.0")
 ]
 ```
 
