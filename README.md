@@ -10,20 +10,23 @@ dependencies: [
 ]
 ```
 
-## Usage
+## Basic Usage
 
 ```swift
-import swift_ai_sdk
 import Combine
+import swift_ai_sdk
+import SwiftUI
 
 class ChatManager: ObservableObject {
-    @Published var messages: [UIMessage] = []
-    @Published var status: ChatStatus = .ready
+    static let shared = ChatManager()
     
     private var chat: Chat?
+    @Published var prompt = ""
+    var currentTask: Task<Void, Never>?
+    
     private var cancellables = Set<AnyCancellable>()
     
-    init() {
+    private init() {
         setupChat()
     }
     
@@ -34,67 +37,110 @@ class ChatManager: ObservableObject {
         )
         
         let chatInit = try! ChatInit(
-            onFinish: { [weak self] message in
-                DispatchQueue.main.async {
-                    self?.messages.append(message)
+            onError: { [weak self] _ in
+                Task { @MainActor in
+                    self?.objectWillChange.send()
+                }
+            },
+            onFinish: { [weak self] _ in
+                Task { @MainActor in
+                    self?.objectWillChange.send()
                 }
             },
             defaultChatTransportApiConfig: apiConfig
         )
         
         chat = Chat(chatInit)
+        observeSDKState()
+    }
+    
+    private func observeSDKState() {
+        guard let chat = chat else { return }
         
-        // Observe messages
-        chat?.state.$messages
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.messages, on: self)
-            .store(in: &cancellables)
-    }
-    
-    func sendMessage(_ text: String) async {
-        try? await chat?.sendMessage(
-            input: .text(text, files: nil, metadata: nil, messageId: nil)
-        )
-    }
-}
-```
-
-## SwiftUI
-
-```swift
-struct ChatView: View {
-    @StateObject private var chatManager = ChatManager()
-    @State private var messageText = ""
-    
-    var body: some View {
-        VStack {
-            ScrollView {
-                ForEach(chatManager.messages, id: \.id) { message in
-                    Text(message.parts.first?.text ?? "")
-                        .padding()
-                }
-            }
-            
-            HStack {
-                TextField("Message", text: $messageText)
-                Button("Send") {
-                    Task { await chatManager.sendMessage(messageText) }
-                    messageText = ""
+        Task {
+            for await _ in chat.state.$messages.values {
+                await MainActor.run {
+                    self.objectWillChange.send()
                 }
             }
         }
     }
+    
+    func generate() async {
+        guard let chat = chat else { return }
+        
+        stopGeneration()
+        let text = prompt
+        prompt = ""
+        
+        currentTask = Task {
+            try? await chat.sendMessage(
+                input: .text(text, files: nil, metadata: nil, messageId: nil)
+            )
+        }
+    }
+    
+    func stopGeneration() {
+        currentTask?.cancel()
+        currentTask = nil
+    }
 }
 ```
 
-## Custom Transport
+## Custom Transport with Auth
 
 ```swift
-class AuthenticatedTransport: DefaultChatTransport {
-    override func sendMessages(/* ... */) async throws -> AsyncStream<UIMessageChunk> {
-        var headers = headers ?? [:]
-        headers["Authorization"] = "Bearer \(token)"
-        return try await super.sendMessages(/* ... */)
+class CustomChatTransport: DefaultChatTransport {
+    override func sendMessages(
+        chatId: String,
+        messages: [UIMessage],
+        abortSignal: Task<Void, Never>? = nil,
+        metadata: [String: Any]? = nil,
+        headers: [String: String]? = nil,
+        body _: [String: Any]? = nil,
+        trigger: ChatRequestTrigger,
+        messageId: String? = nil
+    ) async throws -> AsyncStream<UIMessageChunk> {
+        let requestBody = [
+            "timezone": TimeZone.current.identifier,
+            "chatType": "app"
+        ]
+        
+        let token = "your-auth-token"
+        var mergedHeaders = headers ?? [:]
+        mergedHeaders["Authorization"] = "Bearer \(token)"
+        
+        return try await super.sendMessages(
+            chatId: chatId,
+            messages: messages,
+            abortSignal: abortSignal,
+            metadata: metadata,
+            headers: mergedHeaders,
+            body: requestBody,
+            trigger: trigger,
+            messageId: messageId
+        )
+    }
+}
+
+// Usage
+let transport = CustomChatTransport(apiConfig: apiConfig)
+let chatInit = try ChatInit(
+    transport: transport,
+    // ... other params
+)
+```
+
+## Send Files
+
+```swift
+func sendMessageWithFiles(_ text: String, files: [File]) async {
+    guard let chat = chat else { return }
+    
+    currentTask = Task {
+        try? await chat.sendMessage(
+            input: .text(text, files: files, metadata: nil, messageId: nil)
+        )
     }
 }
 ```
