@@ -1,6 +1,6 @@
 # Swift AI SDK
 
-Swift package for consuming AI chat streams from a Vercel AI SDK v5 backend.
+Swift package for consuming AI chat streams from a [Vercel AI SDK](https://ai-sdk.dev/) v5 backend.
 
 ## Installation
 
