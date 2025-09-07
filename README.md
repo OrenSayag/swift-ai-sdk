@@ -5,7 +5,7 @@ A Swift package for consuming AI chat streams from a Vercel AI SDK v5 backend. T
 ## Features
 
 - 🚀 **Streaming Chat**: Real-time streaming responses from AI models
-- 📱 **iOS & macOS Support**: Works on iOS 15+ and macOS 14+
+- 📱 **iOS & macOS Support**: Works on iOS 15+ and macOS 12+
 - 🔄 **Reactive State Management**: Built with Combine for reactive UI updates
 - 🛠️ **Customizable Transport**: Easy to extend with custom API configurations
 - 📁 **File Support**: Send files and multimedia content
